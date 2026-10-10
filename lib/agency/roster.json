@@ -1,0 +1,9 @@
+{
+  "node": "corpus-management-team",
+  "offices": ["lib/agency/offices/corpus-service-operator.json"],
+  "duties": ["lib/agency/duties/managing-project-corpus-knowledge.json"],
+  "skills": ["lib/agency/skills/managing-project-corpus-knowledge/skill.json"],
+  "works": ["lib/agency/works/project-corpus-knowledge-management.json"],
+  "books": "content/books/value-ledger.json",
+  "capability-dependencies": ["content/capability-dependencies/obsmetrologia-enterprise-observation-coordination-measurement.json"]
+}
