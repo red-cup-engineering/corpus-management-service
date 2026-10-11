@@ -1,4 +1,4 @@
-import { EMPTY_WITNESS_ROOT, identifyJsonSemanticContent } from "@red-cup-engineering/computer-content-engineering-services-section/semantic-content-identity";
+import { EMPTY_WITNESS_ROOT, identifyJsonSemanticContent } from "@red-cup-engineering/computer-content-address-engineering-services-section/semantic-content-identity";
 
 const semantic = (value) => identifyJsonSemanticContent({ objectKind: "corpus-management.knowledge-form", value, witnessRoot: EMPTY_WITNESS_ROOT });
 export function canonical(value) { return semantic(value).bytes.toString("base64"); }
