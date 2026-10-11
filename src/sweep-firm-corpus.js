@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { analyzeForms } from "./lib/knowledge-forms.mjs";
 import { requestCoordinationReadout } from "./lib/coordination-readout.mjs";
 import { createSemanticRecordJournal } from "@red-cup-engineering/semiotic-eavt-services-section/record-semantic-record";
-import { EMPTY_WITNESS_ROOT, identifyJsonSemanticContent } from "@red-cup-engineering/computer-content-engineering-services-section/semantic-content-identity";
+import { EMPTY_WITNESS_ROOT, identifyJsonSemanticContent } from "@red-cup-engineering/computer-content-address-engineering-services-section/semantic-content-identity";
 import { CORPUS_KNOWLEDGE_CONTRACT } from "./law.mjs";
 
 const NODE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
