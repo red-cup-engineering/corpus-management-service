@@ -1,0 +1,12 @@
+[project]
+name = "research-program-dependency-auditor"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["research-corpus", "program-auditor"]
+
+[tool.uv.sources]
+research-corpus = { workspace = true }
+program-auditor = { workspace = true }
+
+[tool.uv.workspace]
+members = ["research-corpus", "program-auditor"]
