@@ -1,12 +1,31 @@
 [project]
-name = "research-program-dependency-auditor"
+name = "research-program-workbench"
 version = "0.1.0"
+description = "Original research-corpus graph reading, dependency auditing, demand planning, citation projection, and monograph composition."
 requires-python = ">=3.11"
-dependencies = ["research-corpus", "program-auditor"]
+dependencies = [
+  "research-corpus",
+  "research-dagger",
+  "program-auditor",
+  "program-planner",
+  "research-citations",
+  "monograph-composer",
+]
 
 [tool.uv.sources]
 research-corpus = { workspace = true }
+research-dagger = { workspace = true }
 program-auditor = { workspace = true }
+program-planner = { workspace = true }
+research-citations = { workspace = true }
+monograph-composer = { workspace = true }
 
 [tool.uv.workspace]
-members = ["research-corpus", "program-auditor"]
+members = [
+  "research-corpus",
+  "research-dagger",
+  "program-auditor",
+  "program-planner",
+  "research-citations",
+  "monograph-composer",
+]
