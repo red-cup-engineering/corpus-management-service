@@ -11,6 +11,7 @@ dependencies = [
   "research-citations",
   "monograph-composer",
   "program-validator",
+  "cite-tool",
 ]
 
 [tool.uv.sources]
@@ -21,6 +22,7 @@ program-planner = { workspace = true }
 research-citations = { workspace = true }
 monograph-composer = { workspace = true }
 program-validator = { workspace = true }
+cite-tool = { workspace = true }
 
 [tool.uv.workspace]
 members = [
@@ -31,4 +33,5 @@ members = [
   "research-citations",
   "monograph-composer",
   "program-validator",
+  "cite-tool",
 ]
