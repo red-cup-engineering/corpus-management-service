@@ -1,0 +1,16 @@
+[project]
+name = "program-validator"
+version = "0.1.0"
+description = "Validate a research-corpus library and emit a WIP report."
+requires-python = ">=3.11"
+dependencies = ["research-corpus", "research-citations", "pyyaml>=6"]
+
+[project.scripts]
+program-validator = "program_validator.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
