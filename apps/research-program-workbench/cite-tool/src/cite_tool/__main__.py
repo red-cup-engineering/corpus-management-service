@@ -45,24 +45,29 @@ def _summarize(refs, issues, root: Path, *, label: str) -> None:
 
 
 def cmd_generate(args) -> int:
-    root, lib_dirs, config = _resolve_root_and_config(args.root)
+    root, lib_dirs, _ = _resolve_root_and_config(args.root)
     refs, issues = load(root, tuple(lib_dirs))
+    _summarize(refs, issues, root, label="cite-tool generate")
+    errors = [i for i in issues if i.severity == "error"]
+    if args.verbose or errors:
+        for i in issues:
+            if args.verbose or i.severity == "error":
+                print(f"  {i.severity}/{i.code} {i.key} ({i.source_path}): {i.message}",
+                      file=sys.stderr)
+    if errors:
+        print("  refusing to replace references.bib with an invalid or partial projection",
+              file=sys.stderr)
+        return 1
 
     out_path = args.out.resolve() if args.out else (root / "references.bib")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(render(refs.values()))
-
-    _summarize(refs, issues, root, label="cite-tool generate")
-    if args.verbose:
-        for i in issues:
-            print(f"  {i.severity}/{i.code} {i.key} ({i.source_path}): {i.message}",
-                  file=sys.stderr)
     try:
         rel = out_path.relative_to(root)
     except ValueError:
         rel = out_path
     print(f"  wrote: {rel}", file=sys.stderr)
-    return 1 if any(i.severity == "error" for i in issues) else 0
+    return 0
 
 
 def cmd_check(args) -> int:
