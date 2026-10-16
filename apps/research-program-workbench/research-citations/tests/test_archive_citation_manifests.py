@@ -107,6 +107,30 @@ references:
         self.assertFalse(refs)
         self.assertIn("references-invalid-entry", [i.code for i in issues])
 
+    def test_legacy_annotation_is_additive_and_inline_wins(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "concepts").mkdir()
+            (root / "references").mkdir()
+            (root / "concepts" / "example.md").write_text("""---
+references:
+  grice1975: {class: book, title: Inline Title, year: 1975}
+---
+""")
+            (root / "references" / "grice1975.md").write_text("""---
+class: book
+title: Annotation Title
+year: 1975
+authors: ["Grice, H. Paul"]
+---
+Research notes
+""")
+            refs, issues = load(root, ("concepts",))
+            self.assertFalse([i for i in issues if i.severity == "error"], issues)
+            self.assertEqual(refs["grice1975"].fields["title"], "Inline Title")
+            self.assertEqual(refs["grice1975"].authors, ["Grice, H. Paul"])
+            self.assertNotIn("class", refs["grice1975"].fields)
+
     def test_invalid_scalar_manifest_is_refused(self):
         refs, issues = self._read("""---
 references: invalid
