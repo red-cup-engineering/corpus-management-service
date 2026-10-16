@@ -120,6 +120,88 @@ def _collect_extras(root: Path) -> tuple[list[Reference], list[SchemaIssue]]:
     return refs, issues
 
 
+# Historical citation manifests in emsenn/emsenn-archive-org/citations.md
+# key references by citekey and call the publication class "class". Keep the
+# existing list-of-{key,type} grammar unchanged; refuse ambiguous translations.
+_ARCHIVE_CLASSES = {
+    "article": "article",
+    "book": "book",
+    "chapter": "incollection",
+    "preprint": "unpublished",
+    "report": "report",
+    "thesis": "thesis",
+    "online": "online",
+    "software": "software",
+}
+
+
+def _normalize_inline_entries(inline, *, source_path: str) -> tuple[list, list[SchemaIssue]]:
+    if isinstance(inline, list):
+        return inline, []
+    issues: list[SchemaIssue] = []
+    if not isinstance(inline, dict):
+        return [], [SchemaIssue(
+            "error", "references-invalid-shape", "<inline>", source_path,
+            "references: must be a list of entries or a citekey-keyed mapping",
+        )]
+    entries = []
+    for key, value in inline.items():
+        if not isinstance(key, str) or not key or not isinstance(value, dict):
+            issues.append(SchemaIssue(
+                "error", "references-invalid-entry", str(key), source_path,
+                "a keyed reference requires a nonempty string citekey and mapping value",
+            ))
+            continue
+        if value.get("key") not in (None, key):
+            issues.append(SchemaIssue(
+                "error", "references-key-conflict", key, source_path,
+                "reference's embedded key disagrees with its map key",
+            ))
+            continue
+        archive_class = value.get("class")
+        explicit_type = value.get("type")
+        if archive_class is not None:
+            if not isinstance(archive_class, str) or archive_class not in _ARCHIVE_CLASSES:
+                issues.append(SchemaIssue(
+                    "error", "references-unknown-class", key, source_path,
+                    f"unrecognized historical citation class: {archive_class!r}",
+                ))
+                continue
+            entry_type = _ARCHIVE_CLASSES[archive_class]
+            if explicit_type is not None and explicit_type != entry_type:
+                issues.append(SchemaIssue(
+                    "error", "references-class-type-conflict", key, source_path,
+                    f"class {archive_class!r} disagrees with type {explicit_type!r}",
+                ))
+                continue
+        elif isinstance(explicit_type, str) and explicit_type:
+            entry_type = explicit_type
+        else:
+            issues.append(SchemaIssue(
+                "error", "references-missing-class", key, source_path,
+                "a keyed reference requires a historical class or an explicit type",
+            ))
+            continue
+        entry = {k: v for k, v in value.items() if k not in ("key", "class")}
+        conflicts = []
+        for old, new in (("in", "booktitle"), ("location", "address")):
+            if old in entry:
+                if new in entry and entry[new] != entry[old]:
+                    conflicts.append(f"{old}/{new}")
+                else:
+                    entry[new] = entry.pop(old)
+        if conflicts:
+            issues.append(SchemaIssue(
+                "error", "references-field-conflict", key, source_path,
+                "conflicting historical and BibTeX fields: " + ", ".join(conflicts),
+            ))
+            continue
+        entry["key"] = key
+        entry["type"] = entry_type
+        entries.append(entry)
+    return entries, issues
+
+
 def _collect_inline(root: Path,
                     lib_dirs: tuple[str, ...]) -> tuple[list[Reference], list[SchemaIssue]]:
     """Walk all notes in `lib_dirs` and harvest their frontmatter `references:`."""
@@ -141,14 +223,11 @@ def _collect_inline(root: Path,
             inline = fm.get("references")
             if not inline:
                 continue
-            if not isinstance(inline, list):
-                issues.append(SchemaIssue(
-                    "error", "references-not-list", "<inline>",
-                    str(p.relative_to(root)),
-                    "frontmatter `references:` must be a list of mappings",
-                ))
-                continue
-            for entry in inline:
+            entries, shape_issues = _normalize_inline_entries(
+                inline, source_path=str(p.relative_to(root)),
+            )
+            issues.extend(shape_issues)
+            for entry in entries:
                 if not isinstance(entry, dict):
                     issues.append(SchemaIssue(
                         "error", "references-entry-not-mapping", "<inline>",
