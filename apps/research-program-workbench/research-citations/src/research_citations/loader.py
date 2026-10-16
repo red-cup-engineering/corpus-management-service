@@ -108,6 +108,16 @@ def _collect_extras(root: Path) -> tuple[list[Reference], list[SchemaIssue]]:
         # but skip annotations where it's explicitly something else.
         if fm.get("kind") not in (None, "reference"):
             continue
+        # Archive-org's annotation file carries class:, not type:. Its
+        # original filename is the citekey; use the same loss-aware decoder.
+        if "class" in fm:
+            entries, normalized_issues = _normalize_inline_entries(
+                {p.stem: fm}, source_path=str(p.relative_to(root)),
+            )
+            issues.extend(normalized_issues)
+            if not entries:
+                continue
+            fm = entries[0]
         ref, errs = _entry_to_reference(
             fm,
             source_path=str(p.relative_to(root)),
