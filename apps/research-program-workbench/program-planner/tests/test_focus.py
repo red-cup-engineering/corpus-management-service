@@ -9,6 +9,8 @@ import contextlib
 import hashlib
 import io
 import json
+import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -153,6 +155,44 @@ class RecordedQuestionFocusTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertEqual(stdout.getvalue(), "")
         self.assertFalse((self.root / "tools/build/research-program.md").exists())
+
+    @unittest.skipUnless(
+        os.environ.get("RESEARCH_QUESTION_PRODUCER"),
+        "original Red Cup question-recorder source not selected",
+    )
+    def test_actual_source_recorder_to_planner_handoff(self) -> None:
+        """Execute the pinned upstream maker, then this actual consumer."""
+        self.note("concepts", "semiotic-foam", 'kind: concept\\n')
+        record = {
+            "root": str(self.root),
+            "sectionPath": "services/semiotics",
+            "slug": "bearing-bonds",
+            "title": "Bearing bonds",
+            "question": "Can this cell accept energy under a bearing commitment?",
+            "dateCreated": "2026-10-23",
+            "status": "partially-addressed",
+            "frontmatter": {
+                "explores": ["semiotic-foam"],
+                "source-message": "ni:///sha-256;source-only-unverified",
+            },
+        }
+        result = subprocess.run(
+            ["node", os.environ["RESEARCH_QUESTION_PRODUCER"]],
+            input=json.dumps(record), text=True, capture_output=True,
+            check=True,
+        )
+        producer = json.loads(result.stdout)
+        self.assertEqual(producer["validation"]["conformant"], True)
+        source = self.root / producer["relativePath"]
+        focused = focus_recorded_question(self.corpus(), source)
+        self.assertEqual(focused["source"]["sha256"],
+                         hashlib.sha256(source.read_bytes()).hexdigest())
+        self.assertEqual(focused["source"]["question"], record["question"])
+        self.assertEqual(focused["research_program"]["structural_readiness"],
+                         "blocked")
+        self.assertFalse(focused["source"]["origin_witness_verified"])
+        self.assertEqual(focused["receiving"]["whole_structure_received"],
+                         "not-assessed")
 
     def test_original_batch_planner_remains_available(self) -> None:
         stderr = io.StringIO()
