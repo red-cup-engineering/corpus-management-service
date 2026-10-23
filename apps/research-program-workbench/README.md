@@ -28,6 +28,50 @@ uv run monograph-composer --root /path/to/research-program --no-pandoc
 
 The original Pandoc pipeline may be selected separately from a qualified host. Bibliography generation consumes the same local `research-citations` workspace package; the original `research-dagger` ordering function remains importable, without a compatibility wrapper.
 
+## First-class Science question → research-program focus
+
+The existing Red Cup **record-research-question-service** writes an original
+section-owned question as a create-only Markdown carrier; it does not answer or
+route it. The original program planner now has a **read-only**, source-preserving
+receiving operation for those already-recorded files:
+
+```sh
+uv run program-planner --root /path/to/research-toml-root \
+  --question-file /path/to/science-section/content/text/documents/articles/research-articles/questions/existing.md
+```
+
+This mode emits one structured JSON readout to **stdout**; it never generates a
+paper, opens a second question, silently inserts a new corpus entity, writes a
+batch plan, or supplies missing source links by string similarity. It records
+the exact question body, SHA-256 of the original file bytes, exact source
+references, exact matches to the **configured** research corpus, unjoined
+references, a *frontmatter-graph-only* readiness classification, and explicitly
+unassessed proof, Engineering, Operations and independent-receiving states.
+Source pointers, even if present, are **claims of provenance, not authenticated
+witnesses**. The full original question survives later research re-readings.
+
+The question file may belong to a sibling source-owned Science checkout. The
+caller selects it explicitly; a source not found, non-question file, malformed
+reference, or ambiguous slug collision is refused without manufacturing a
+replacement. The programme reads only the configured research corpus; absence
+of an exact reference is not proof that the 561 Group does not know it. The
+output is a *candidate source-linked research structure*, **not a received
+Holistic Integrated Thing Structure** or a mathematical theorem.
+
+The native receiving test calls the **pinned original question recorder**
+commit `23b4fcd56cdf9aa7636759a382c27edfeadc61bd` and then this
+same CLI/library across valid, missing, invalid, homonymous and resolved
+question conditions. The source check is:
+
+```sh
+python -m unittest discover -s program-planner/tests -v
+```
+
+A runnable environment with its actual workspace packages is required.
+The ordinary no-`--question-file` Markdown batch planner remains unchanged.
+No scientific acceptance, installed host adoption or physical foam theorem is
+inferred from the research-program graph.
+
 ## Archive citation-manifest receiving
 
 The archived `emsenn/emsenn-archive-code` `research/citations/README.md` uses a `references:` **list** of entries with `key:` and `type:`. The separate historical `emsenn/emsenn-archive-org/citations.md` defines a **citekey-keyed map** with `class:`, `in:` and `location:`. Those formats are different; neither one's existence certifies the current Science citation policy.
