@@ -194,6 +194,46 @@ class RecordedQuestionFocusTests(unittest.TestCase):
         self.assertEqual(focused["receiving"]["whole_structure_received"],
                          "not-assessed")
 
+    def test_explicit_source_comparison_preserves_new_literal_claim(self) -> None:
+        prior = self.question(slug="prior-bearing", status="open")
+        before = prior.read_text()
+        prior.write_text(before.replace(
+            "What enables an energy-backed commitment by a semiotic cell "
+            "toward an attended bearing?",
+            "Where does a semiotic cell focus attention?",
+        ))
+        latest = self.question()
+        report = focus_recorded_question(self.corpus(), latest, prior)
+        diff = report["source_comparison"]
+        self.assertEqual(diff["prior_sha256"],
+                         hashlib.sha256(prior.read_bytes()).hexdigest())
+        self.assertIn("energy-backed", "".join(diff["literal_added_spans"]))
+        self.assertTrue(diff["predecessor_selected_by_caller"])
+        self.assertFalse(diff["semantic_novelty_assessed"])
+        self.assertEqual(report["source"]["question"],
+                         "What enables an energy-backed commitment by a semiotic "
+                         "cell toward an attended bearing?")
+
+    def test_identical_source_has_no_artificial_change(self) -> None:
+        source = self.question()
+        output = focus_recorded_question(self.corpus(), source, source)
+        diff = output["source_comparison"]
+        self.assertEqual(diff["literal_added_spans"], [])
+        self.assertEqual(diff["literal_removed_spans"], [])
+
+    def test_missing_explicit_predecessor_refuses_comparison(self) -> None:
+        source = self.question()
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = main(["--root", str(self.root),
+                         "--question-file", str(source),
+                         "--previous-question-file",
+                         str(self.science / "unrecorded.md")])
+        self.assertEqual(code, 2)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("source question refused", stderr.getvalue())
+
     def test_original_batch_planner_remains_available(self) -> None:
         stderr = io.StringIO()
         with contextlib.redirect_stderr(stderr):
