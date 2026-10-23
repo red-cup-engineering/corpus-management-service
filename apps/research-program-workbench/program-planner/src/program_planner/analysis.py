@@ -40,10 +40,20 @@ def in_edges_index(corpus: Corpus) -> dict[str, set[str]]:
     return idx
 
 
+def explored_refs(note) -> list[str]:
+    """A single referenced slug is one relation, not its characters."""
+    raw = note.fm.get("explores")
+    if isinstance(raw, str):
+        return [raw] if raw else []
+    if isinstance(raw, list):
+        return [r for r in raw if isinstance(r, str) and r]
+    return []
+
+
 def open_questions(corpus: Corpus) -> list[str]:
     return [s for s, n in corpus.items()
             if n.kind == "question"
-            and n.fm.get("status") in (None, "open", "partial")]
+            and n.fm.get("status") in (None, "open", "partial", "partially-addressed")]
 
 
 def proven_theorems_about(slug: str, corpus: Corpus,
@@ -68,7 +78,7 @@ def entity_firmness(slug: str, corpus: Corpus, idx: dict[str, set[str]]) -> str:
 
 
 def question_blockers(q: str, corpus: Corpus, idx: dict[str, set[str]]) -> dict:
-    explored = corpus[q].fm.get("explores") or []
+    explored = explored_refs(corpus[q])
     out: dict[str, list] = {"firm": [], "sketch": [], "loose": [], "missing": []}
     for ent in explored:
         f = entity_firmness(ent, corpus, idx)
@@ -159,7 +169,7 @@ def enablement_frontier(corpus: Corpus,
                         idx: dict[str, set[str]]) -> list[tuple[str, dict]]:
     demands: dict[str, dict] = {}
     for q in open_questions(corpus):
-        for ent in (corpus[q].fm.get("explores") or []):
+        for ent in explored_refs(corpus[q]):
             if ent not in corpus:
                 continue
             char = proven_theorems_about(ent, corpus, idx)
@@ -177,7 +187,7 @@ def demand_clusters(corpus: Corpus,
                     ) -> list[tuple[str, set[str], str, float]]:
     shared: dict[str, set[str]] = defaultdict(set)
     for q in open_questions(corpus):
-        for e in (corpus[q].fm.get("explores") or []):
+        for e in explored_refs(corpus[q]):
             shared[e].add(q)
     out = []
     for e, qs in shared.items():
@@ -245,7 +255,7 @@ def unnamed_ancestor_candidates(corpus: Corpus,
                                 limit: int = 15
                                 ) -> list[tuple[str, str, set[str], float]]:
     open_q = open_questions(corpus)
-    explored = {q: set(corpus[q].fm.get("explores") or []) for q in open_q}
+    explored = {q: set(explored_refs(corpus[q])) for q in open_q}
     out = []
     for i, q1 in enumerate(open_q):
         e1 = explored[q1]
