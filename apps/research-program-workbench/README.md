@@ -42,7 +42,7 @@ uv run program-planner --root /path/to/research-toml-root \
 
 Optionally supply `--previous-question-file <earlier-recorded-question.md>`
 to compare two **explicitly selected** source questions. The readout retains
-the prior file digest and exact literal added/removed character spans. This is
+the prior file digest and exact source substrings aligned to complete tokens. This is
 *not* an inferred semantic novelty judgment or an automatic attribution of
 message order. It refuses a missing predecessor rather than choosing one by
 search relevance.
