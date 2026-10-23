@@ -19,7 +19,7 @@ from research_corpus import load
 from research_corpus.config import load_config
 from program_planner.__main__ import main
 from program_planner.analysis import open_questions, question_blockers, in_edges_index
-from program_planner.focus import focus_recorded_question
+from program_planner.focus import focus_recorded_program, focus_recorded_question
 
 
 class RecordedQuestionFocusTests(unittest.TestCase):
@@ -233,6 +233,101 @@ class RecordedQuestionFocusTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertEqual(stdout.getvalue(), "")
         self.assertIn("source question refused", stderr.getvalue())
+
+    def test_multi_question_original_program_has_shared_blocker(self) -> None:
+        self.note("concepts", "semiotic-foam",
+                  'kind: concept\nstatus: "open"\n')
+        first = self.question(slug="bearing-bonds")
+        second = self.question(slug="cell-energy")
+        prog = focus_recorded_program(self.corpus(), [first, second])
+        self.assertEqual(prog["kind"],
+                         "program-planner.recorded-question-program/v1")
+        self.assertEqual(prog["source_question_count"], 2)
+        self.assertEqual(set(prog["source_questions"]),
+                         {"bearing-bonds", "cell-energy"})
+        groups = prog["dependency_components"]
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0]["question_slugs"],
+                         ["bearing-bonds", "cell-energy"])
+        self.assertEqual(groups[0]["shared_not_firm_dependencies"],
+                         [{"original_reference": "semiotic-foam",
+                           "questions": ["bearing-bonds", "cell-energy"]}])
+        self.assertEqual(prog["receiving"]["holistic_structure_received"],
+                         "not-assessed")
+
+    def test_program_distinguishes_unrelated_and_case_distinct_questions(self) -> None:
+        foam = self.question(slug="lowercase-foam", explores='explores: foam\n')
+        upper = self.question(slug="uppercase-foam", explores='explores: FOAM\n')
+        program = focus_recorded_program(self.corpus(), [upper, foam])
+        groups = program["dependency_components"]
+        self.assertEqual(len(groups), 2)
+        self.assertTrue(all(len(g["question_slugs"]) == 1 for g in groups))
+        self.assertEqual(
+            program["source_questions"]["lowercase-foam"]
+            ["research_program"]["unresolved_exact_references"]["explores"],
+            ["foam"],
+        )
+        self.assertEqual(
+            program["source_questions"]["uppercase-foam"]
+            ["research_program"]["unresolved_exact_references"]["explores"],
+            ["FOAM"],
+        )
+
+    def test_program_refuses_cross_checkout_slug_collision(self) -> None:
+        first = self.question()
+        second = self.note("questions", "bearing-bonds",
+                           'type: question\ntitle: "Same slug"\n',
+                           "## Question\n\nDifferent actual origin.\n")
+        with self.assertRaisesRegex(ValueError, "slug collision"):
+            focus_recorded_program(self.corpus(), [first, second])
+
+    def test_cli_composes_program_from_explicit_sources_without_writes(self) -> None:
+        first = self.question(slug="bearing-bonds")
+        second = self.question(slug="cell-energy")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = main(["--root", str(self.root),
+                         "--question-file", str(first),
+                         "--question-file", str(second)])
+        self.assertEqual(code, 0)
+        program = json.loads(out.getvalue())
+        self.assertEqual(program["source_question_count"], 2)
+        self.assertEqual(program["source_questions"]["bearing-bonds"]
+                         ["source"]["sha256"],
+                         hashlib.sha256(first.read_bytes()).hexdigest())
+        self.assertFalse((self.root / "tools/build/research-program.md").exists())
+
+    @unittest.skipUnless(
+        os.environ.get("RESEARCH_QUESTION_PRODUCER"),
+        "original Red Cup question recorder source not selected",
+    )
+    def test_two_original_producer_questions_into_one_program(self) -> None:
+        self.note("concepts", "semiotic-foam", 'kind: concept\n')
+        paths = []
+        for slug in ("bearing-bonds", "cell-energy"):
+            record = {
+                "root": str(self.root),
+                "sectionPath": "services/semiotics",
+                "slug": slug,
+                "title": slug,
+                "question": f"How does the original source qualify {slug}?",
+                "dateCreated": "2026-10-23",
+                "status": "partially-addressed",
+                "frontmatter": {"explores": ["semiotic-foam"]},
+            }
+            receipt = subprocess.run(
+                ["node", os.environ["RESEARCH_QUESTION_PRODUCER"]],
+                input=json.dumps(record), text=True, capture_output=True,
+                check=True,
+            )
+            paths.append(self.root / json.loads(receipt.stdout)["relativePath"])
+        program = focus_recorded_program(self.corpus(), paths)
+        self.assertEqual(program["source_question_count"], 2)
+        self.assertEqual(len(program["dependency_components"]), 1)
+        self.assertTrue(all(
+            value["source"]["origin_witness_verified"] is False
+            for value in program["source_questions"].values()
+        ))
 
     def test_original_batch_planner_remains_available(self) -> None:
         stderr = io.StringIO()
