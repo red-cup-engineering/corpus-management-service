@@ -11,7 +11,7 @@ from research_corpus.config import load_config
 from research_corpus.frontmatter import FrontmatterError
 
 from .analysis import in_edges_index
-from .focus import focus_recorded_question
+from .focus import focus_recorded_program, focus_recorded_question
 from .render import render
 
 
@@ -21,8 +21,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="research program root (default: walk up from CWD)")
     ap.add_argument("--out", type=Path, default=None,
                     help="report path (default: from research.toml [plan] output)")
-    ap.add_argument("--question-file", type=Path, default=None,
-                    help="read-only focus on an EXISTING first-class research question; emits JSON to stdout")
+    ap.add_argument("--question-file", type=Path, action="append", default=None,
+                    help="repeat to read 2–32 ORIGINAL first-class research questions as one source-held program")
     ap.add_argument("--previous-question-file", type=Path, default=None,
                     help="explicit predecessor question source for a literal-only comparison")
     args = ap.parse_args(argv)
@@ -36,9 +36,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.out is not None:
             ap.error("--out is for the batch report; focused question readout goes to stdout")
         try:
-            focused = focus_recorded_question(
-                corpus, args.question_file, args.previous_question_file
-            )
+            if args.previous_question_file is not None and len(args.question_file) != 1:
+                ap.error("--previous-question-file requires exactly one --question-file")
+            if len(args.question_file) == 1:
+                focused = focus_recorded_question(
+                    corpus, args.question_file[0], args.previous_question_file
+                )
+            else:
+                focused = focus_recorded_program(corpus, args.question_file)
         except (OSError, UnicodeError, ValueError, FrontmatterError) as error:
             print(f"program-planner: source question refused: {error}", file=sys.stderr)
             return 2
