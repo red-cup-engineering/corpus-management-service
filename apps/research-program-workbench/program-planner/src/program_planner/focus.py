@@ -15,7 +15,9 @@ from research_corpus import RELATION_KEYS
 from research_corpus.corpus import Corpus, Note
 from research_corpus.frontmatter import parse_note
 
-from .analysis import in_edges_index, question_blockers, question_readiness
+from .analysis import (
+    in_edges_index, question_blockers, question_clusters, question_readiness,
+)
 
 QUESTION_SECTION = re.compile(
     r"(?ms)^## Question[ \t]*\n\n(.*?)(?=^##[ \t]+|\Z)"
@@ -179,3 +181,85 @@ def focus_recorded_question(
             "semantic_novelty_assessed": False,
         }
     return result
+
+
+def focus_recorded_program(corpus: Corpus, question_files: list[Path]) -> dict:
+    """Read a bounded original-source question family as one research program.
+
+    Reuse the original planner's question-cluster analysis on only explicitly
+    selected first-class questions and the original configured research
+    concepts/theorems. Neither lexical search nor authored prose adds edges.
+    """
+    if not (2 <= len(question_files) <= 32):
+        raise ValueError("a program requires 2–32 explicitly selected questions")
+
+    selected: dict[str, Note] = {}
+    addresses: set[Path] = set()
+    for given in question_files:
+        source, _, fm, body, _ = _read_question(given)
+        if source in addresses:
+            raise ValueError(f"duplicate source question: {source}")
+        addresses.add(source)
+        slug = source.stem
+        if slug in selected:
+            raise ValueError(f"slug collision among source questions: {slug}")
+        prior = corpus.notes.get(slug)
+        if prior is not None and (corpus.root / prior.path).resolve() != source:
+            raise ValueError(f"slug collision with existing corpus source: {slug}")
+        # Retain exact recorded source; do not make new file or graph authority.
+        selected[slug] = Note(
+            slug=slug, dir="questions", kind="question",
+            fm=fm, body=body, path=source,
+        )
+
+    # Non-selected old questions are not silently admitted as part of this
+    # particular new program. All other pre-existing research stays available
+    # as explicitly configured prior resources.
+    qualified = {
+        slug: note for slug, note in corpus.items()
+        if note.kind != "question"
+    }
+    qualified.update(selected)
+    joined = Corpus(
+        root=corpus.root, config=corpus.config, notes=qualified,
+        parse_errors=list(corpus.parse_errors),
+        bib_keys=set(corpus.bib_keys),
+    )
+    idx = in_edges_index(joined)
+    reports = {
+        slug: focus_recorded_question(joined, note.path)
+        for slug, note in sorted(selected.items())
+    }
+    clusters = question_clusters(joined, idx)
+    represented = []
+    for group in clusters:
+        qids = sorted(group["questions"])
+        represented.append({
+            "question_slugs": qids,
+            "shared_not_firm_dependencies": [
+                {"original_reference": dep, "questions": sorted(qs)}
+                for dep, qs in group["shared_blockers"]
+            ],
+        })
+
+    return {
+        "kind": "program-planner.recorded-question-program/v1",
+        "input_selection": "explicit-original-files-only",
+        "source_question_count": len(selected),
+        "source_questions": reports,
+        "dependency_components": represented,
+        "program_readout": {
+            "original_corpus_root": str(corpus.root.resolve()),
+            "configured_prior_nonquestion_resources": len(qualified) - len(selected),
+            "unresolved_source_links_remain_unresolved": True,
+            "graph_readiness_is_not_scientific_acceptance": True,
+            "corpus_parse_errors": len(corpus.parse_errors),
+        },
+        "receiving": {
+            "scientific_proof": "not-assessed",
+            "engineering_consumer_installation": "not-assessed",
+            "operational_work": "not-assessed",
+            "independent_beneficiary_acceptance": "not-assessed",
+            "holistic_structure_received": "not-assessed",
+        },
+    }
