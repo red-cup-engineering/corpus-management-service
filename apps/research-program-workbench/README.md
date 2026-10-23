@@ -40,6 +40,23 @@ uv run program-planner --root /path/to/research-toml-root \
   --question-file /path/to/science-section/content/text/documents/articles/research-articles/questions/existing.md
 ```
 
+To read an actual *research program* rather than one topic, repeat
+`--question-file` with **2–32 explicitly selected, distinct original
+question files**. The same CLI reuses the current research-corpus source
+graph to return each exact source claim, existing typed dependencies and
+shared unresolved bottlenecks through the existing program-planner cluster
+function. It never elevates source-graph proximity to truth, automatically
+selects neighboring projects, or labels the program as HITS-received.
+Different questions remain distinguishable even if they share a blocker;
+the \`foam\` and \`FOAM\` homonyms are never canonicalized by spelling.
+A multi-question program requires no new persistent program directory.
+
+```sh
+uv run program-planner --root /path/to/research-toml-root \
+  --question-file /path/to/original/question-a.md \
+  --question-file /path/to/original/question-b.md
+```
+
 Optionally supply `--previous-question-file <earlier-recorded-question.md>`
 to compare two **explicitly selected** source questions. The readout retains
 the prior file digest and exact source substrings aligned to complete tokens. This is
