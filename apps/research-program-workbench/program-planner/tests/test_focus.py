@@ -162,7 +162,7 @@ class RecordedQuestionFocusTests(unittest.TestCase):
     )
     def test_actual_source_recorder_to_planner_handoff(self) -> None:
         """Execute the pinned upstream maker, then this actual consumer."""
-        self.note("concepts", "semiotic-foam", 'kind: concept\\n')
+        self.note("concepts", "semiotic-foam", 'kind: concept\n')
         record = {
             "root": str(self.root),
             "sectionPath": "services/semiotics",
