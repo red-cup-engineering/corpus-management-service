@@ -40,6 +40,13 @@ uv run program-planner --root /path/to/research-toml-root \
   --question-file /path/to/science-section/content/text/documents/articles/research-articles/questions/existing.md
 ```
 
+Optionally supply `--previous-question-file <earlier-recorded-question.md>`
+to compare two **explicitly selected** source questions. The readout retains
+the prior file digest and exact literal added/removed character spans. This is
+*not* an inferred semantic novelty judgment or an automatic attribution of
+message order. It refuses a missing predecessor rather than choosing one by
+search relevance.
+
 This mode emits one structured JSON readout to **stdout**; it never generates a
 paper, opens a second question, silently inserts a new corpus entity, writes a
 batch plan, or supplies missing source links by string similarity. It records
