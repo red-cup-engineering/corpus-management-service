@@ -145,16 +145,30 @@ def focus_recorded_question(
         previous, original, _, _, previous_question = _read_question(
             previous_question_file
         )
+        # Align complete source tokens so a repeated letter cannot fragment
+        # the actual newly introduced claim ("energy-backed", for example).
+        # Every displayed span is still an exact slice of an original source.
+        before_tokens = list(re.finditer(r"\S+", previous_question))
+        after_tokens = list(re.finditer(r"\S+", question))
+        matcher = difflib.SequenceMatcher(
+            None,
+            [m.group() for m in before_tokens],
+            [m.group() for m in after_tokens],
+            autojunk=False,
+        )
         additions: list[str] = []
         removals: list[str] = []
-        matcher = difflib.SequenceMatcher(
-            None, previous_question, question, autojunk=False
-        )
-        for action, first_start, first_end, next_start, next_end in matcher.get_opcodes():
-            if action in ("replace", "insert"):
-                additions.append(question[next_start:next_end])
-            if action in ("replace", "delete"):
-                removals.append(previous_question[first_start:first_end])
+        for operation, i1, i2, j1, j2 in matcher.get_opcodes():
+            if operation in ("replace", "insert") and j2 > j1:
+                additions.append(
+                    question[after_tokens[j1].start():after_tokens[j2 - 1].end()]
+                )
+            if operation in ("replace", "delete") and i2 > i1:
+                removals.append(
+                    previous_question[
+                        before_tokens[i1].start():before_tokens[i2 - 1].end()
+                    ]
+                )
         result["source_comparison"] = {
             "prior_path": str(previous),
             "prior_sha256": hashlib.sha256(original).hexdigest(),
