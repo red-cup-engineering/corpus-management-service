@@ -6,6 +6,7 @@ a mathematical or empirical result.
 """
 from __future__ import annotations
 
+import difflib
 import hashlib
 import re
 from pathlib import Path
@@ -38,12 +39,7 @@ def _references(frontmatter: dict, key: str) -> list[str]:
     return list(values)
 
 
-def focus_recorded_question(corpus: Corpus, question_file: Path) -> dict:
-    """Read an existing question; join ONLY exact present corpus references.
-
-    This is a conditional research PROGRAM readout: a source-grounded inquiry
-    with a dependency frontier, not a research result or fulfilled HITS.
-    """
+def _read_question(question_file: Path):
     source = question_file.expanduser().resolve(strict=True)
     if not source.is_file() or source.suffix != ".md":
         raise ValueError("question source must be an existing Markdown file")
@@ -57,6 +53,20 @@ def focus_recorded_question(corpus: Corpus, question_file: Path) -> dict:
     title = frontmatter.get("title")
     if not isinstance(title, str) or not title.strip():
         raise ValueError("recorded question has no title")
+    return source, raw, frontmatter, body, match.group(1).strip()
+
+
+def focus_recorded_question(
+    corpus: Corpus, question_file: Path,
+    previous_question_file: Path | None = None,
+) -> dict:
+    """Join exact research links without rewriting claims or inferring novelty.
+
+    Optional explicit predecessor comparisons retain actual literal changes,
+    not an assistant-selected predecessor or a semantic novelty score.
+    """
+    source, raw, frontmatter, body, question = _read_question(question_file)
+    title = frontmatter["title"]
 
     slug = source.stem
     prior = corpus.notes.get(slug)
@@ -101,7 +111,7 @@ def focus_recorded_question(corpus: Corpus, question_file: Path) -> dict:
         if key in frontmatter:
             claimed_sources[key] = frontmatter[key]
 
-    return {
+    result = {
         "kind": "program-planner.recorded-question-focus/v1",
         "source": {
             "path": str(source),
@@ -111,7 +121,7 @@ def focus_recorded_question(corpus: Corpus, question_file: Path) -> dict:
             "active": frontmatter.get("status") in OPEN_STATUSES,
             # The complete body is carried, not summarized into a theory.
             "body": body,
-            "question": match.group(1).strip(),
+            "question": question,
             "claimed_origin": claimed_sources,
             "origin_witness_verified": False,
         },
@@ -131,3 +141,27 @@ def focus_recorded_question(corpus: Corpus, question_file: Path) -> dict:
             "whole_structure_received": "not-assessed",
         },
     }
+    if previous_question_file is not None:
+        previous, original, _, _, previous_question = _read_question(
+            previous_question_file
+        )
+        additions: list[str] = []
+        removals: list[str] = []
+        matcher = difflib.SequenceMatcher(
+            None, previous_question, question, autojunk=False
+        )
+        for action, first_start, first_end, next_start, next_end in matcher.get_opcodes():
+            if action in ("replace", "insert"):
+                additions.append(question[next_start:next_end])
+            if action in ("replace", "delete"):
+                removals.append(previous_question[first_start:first_end])
+        result["source_comparison"] = {
+            "prior_path": str(previous),
+            "prior_sha256": hashlib.sha256(original).hexdigest(),
+            "prior_question": previous_question,
+            "literal_added_spans": additions,
+            "literal_removed_spans": removals,
+            "predecessor_selected_by_caller": True,
+            "semantic_novelty_assessed": False,
+        }
+    return result
