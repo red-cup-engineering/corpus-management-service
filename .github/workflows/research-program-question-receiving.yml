@@ -1,0 +1,48 @@
+name: Research question to program planner receiving
+
+on:
+  push:
+    paths:
+      - "apps/research-program-workbench/**"
+      - ".github/workflows/research-program-question-receiving.yml"
+  pull_request:
+    paths:
+      - "apps/research-program-workbench/**"
+      - ".github/workflows/research-program-question-receiving.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  native-source-receiving:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the original research workbench
+        uses: actions/checkout@v4
+      - name: Check out pinned original first-class question producer
+        uses: actions/checkout@v4
+        with:
+          repository: red-cup-engineering/record-research-question-service
+          ref: 23b4fcd56cdf9aa7636759a382c27edfeadc61bd
+          path: question-producer
+          persist-credentials: false
+      - name: Select Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Select Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install original workspace packages
+        run: |
+          python -m pip install \
+            -e apps/research-program-workbench/research-corpus \
+            -e apps/research-program-workbench/program-planner
+      - name: Execute original-producer to planner integration and refusal cases
+        env:
+          RESEARCH_QUESTION_PRODUCER: ${{ github.workspace }}/question-producer/scripts/record-research-question-cli.mjs
+        run: |
+          python -m unittest discover \
+            -s apps/research-program-workbench/program-planner/tests \
+            -v
