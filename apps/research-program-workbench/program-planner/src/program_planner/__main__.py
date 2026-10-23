@@ -23,16 +23,22 @@ def main(argv: list[str] | None = None) -> int:
                     help="report path (default: from research.toml [plan] output)")
     ap.add_argument("--question-file", type=Path, default=None,
                     help="read-only focus on an EXISTING first-class research question; emits JSON to stdout")
+    ap.add_argument("--previous-question-file", type=Path, default=None,
+                    help="explicit predecessor question source for a literal-only comparison")
     args = ap.parse_args(argv)
 
     root = args.root.resolve() if args.root else find_root()
     config = load_config(root)
     corpus = load(root=root, config=config)
+    if args.previous_question_file is not None and args.question_file is None:
+        ap.error("--previous-question-file requires --question-file")
     if args.question_file is not None:
         if args.out is not None:
             ap.error("--out is for the batch report; focused question readout goes to stdout")
         try:
-            focused = focus_recorded_question(corpus, args.question_file)
+            focused = focus_recorded_question(
+                corpus, args.question_file, args.previous_question_file
+            )
         except (OSError, UnicodeError, ValueError, FrontmatterError) as error:
             print(f"program-planner: source question refused: {error}", file=sys.stderr)
             return 2
