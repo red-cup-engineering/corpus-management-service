@@ -5,5 +5,7 @@
   "to": "a witnessed MAPE chain with explicit knowledge-form issues and non-mutating advice",
   "cost": "bounded local computation and any lawfully witnessed coordination bits",
   "otherwise": "the Project Management Team lacks a contracted measurement of its project corpus knowledge forms",
-  "needs": ["managing-project-corpus-knowledge"]
+  "needs": [
+    "managing-project-corpus-knowledge"
+  ]
 }
