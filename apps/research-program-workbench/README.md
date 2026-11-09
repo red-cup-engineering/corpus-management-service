@@ -26,6 +26,8 @@ uv run program-planner --root /path/to/research-program
 uv run monograph-composer --root /path/to/research-program --no-pandoc
 ```
 
+Pass `--out /path/to/report.md` to `program-auditor` to select the report output path.
+
 The original Pandoc pipeline may be selected separately from a qualified host. Bibliography generation consumes the same local `research-citations` workspace package; the original `research-dagger` ordering function remains importable, without a compatibility wrapper.
 
 ## First-class Science question → research-program focus
