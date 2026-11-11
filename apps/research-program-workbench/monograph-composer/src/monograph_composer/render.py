@@ -7,6 +7,7 @@ from typing import Mapping
 
 from research_corpus import find_markdown_links, resolve_link_slug
 from research_corpus.corpus import Corpus, Note
+from research_corpus.links import prose_links_text
 
 KIND_LABEL: dict[str, str] = {
     "concept": "Concept",
@@ -34,19 +35,27 @@ def strip_lean_sections(body: str) -> str:
     return LEAN_SECTION_RE.sub("", body).rstrip() + "\n"
 
 
-def extract_title_and_body(body: str) -> tuple[str, str]:
-    m = H1_RE.search(body)
+def extract_title_and_body(body: str, *, strip_lean: bool = True) -> tuple[str, str]:
+    m = H1_RE.search(body if strip_lean else prose_links_text(body))
     if not m:
-        return "", strip_lean_sections(body).strip()
+        return "", (strip_lean_sections(body) if strip_lean else body).strip()
+    # The mask locates a real heading, but its capture lengths cannot recover
+    # trailing inline code: masked code is indistinguishable from whitespace.
+    m = H1_RE.match(body, m.start())
+    assert m is not None
     title = m.group(1).strip()
     rest = body[: m.start()] + body[m.end():]
-    return title, strip_lean_sections(rest).strip()
+    return title, (strip_lean_sections(rest) if strip_lean else rest).strip()
 
 
-def demote_headings(body: str, by: int) -> str:
+def demote_headings(body: str, by: int, *, prose_only: bool = False) -> str:
     if by <= 0:
         return body
-    return HEADING_RE.sub(lambda m: "#" * (len(m.group(1)) + by), body)
+    if not prose_only:
+        return HEADING_RE.sub(lambda m: "#" * (len(m.group(1)) + by), body)
+    for match in reversed(list(HEADING_RE.finditer(prose_links_text(body)))):
+        body = body[:match.start()] + "#" * by + body[match.start():]
+    return body
 
 
 def rewrite_links(body: str, all_slugs: set[str], *,
@@ -176,4 +185,33 @@ def render_appendix_further_reading(corpus: Corpus, all_slugs: set[str]) -> str:
         parts.append("")
         parts.append(rest)
         parts.append("")
+    return "\n".join(parts)
+
+
+def source_note_slugs(corpus: Corpus) -> list[str]:
+    """Typed source annotations outside the legacy root references directory."""
+    return sorted(s for s, note in corpus.items()
+                  if note.kind == "reference" and note.dir != "references")
+
+
+def render_appendix_source_notes(corpus: Corpus, all_slugs: set[str]) -> str:
+    """Keep nested typed source notes accessible without treating them as BibTeX.
+
+    The primary order excludes reference notes. Every nested typed annotation
+    therefore needs its own anchored body, even when another note cites its key.
+    Source limitations (including headings about Lean) are part of that body.
+    """
+    slugs = source_note_slugs(corpus)
+    if not slugs:
+        return ""
+    parts = ["### Source notes {#appendix-source-notes}", "",
+             "Source annotations retain the inspected material, its scope and "
+             "its relation to this research.\n"]
+    for slug in slugs:
+        note = corpus[slug]
+        title, rest = extract_title_and_body(note.body, strip_lean=False)
+        title = title or note.fm.get("title") or note.fm.get("name") or slug
+        rest = rewrite_links(demote_headings(rest, 3, prose_only=True), all_slugs,
+                             source_path=note.path, path_slugs=corpus.path_slugs)
+        parts.extend([f"#### {title} {{#{slug}}}", "", rest, ""])
     return "\n".join(parts)
