@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import re
+from pathlib import PurePosixPath
+from typing import Mapping
 
-from research_corpus import LINK_RE
+from research_corpus import find_markdown_links, resolve_link_slug
 from research_corpus.corpus import Corpus, Note
 
 KIND_LABEL: dict[str, str] = {
@@ -47,44 +49,49 @@ def demote_headings(body: str, by: int) -> str:
     return HEADING_RE.sub(lambda m: "#" * (len(m.group(1)) + by), body)
 
 
-def rewrite_links(body: str, all_slugs: set[str]) -> str:
-    def sub(m: re.Match) -> str:
-        text, target, frag = m.group(1), m.group(2), m.group(3) or ""
+def rewrite_links(body: str, all_slugs: set[str], *,
+                   source_path: PurePosixPath | None = None,
+                   path_slugs: Mapping[str, str] | None = None) -> str:
+    # Apply backwards so offsets remain those of the original prose. The same
+    # scanner as validation preserves code examples and handles nested paths.
+    for link in reversed(find_markdown_links(body)):
+        target = (resolve_link_slug(link, source_path, path_slugs)
+                  if source_path is not None and path_slugs is not None else link.slug)
         if target in all_slugs:
-            return f"[{text}](#{target}{frag})"
-        return m.group(0)
-    return LINK_RE.sub(sub, body)
+            replacement = f"[{link.text}](#{link.fragment or target})"
+            body = body[:link.start] + replacement + body[link.end:]
+    return body
 
 
-def render_preface(narr: Note, all_slugs: set[str]) -> str:
+def render_preface(narr: Note, all_slugs: set[str], *, path_slugs=None) -> str:
     """Positionless overview narrative: H2, body subsections demoted by 1."""
     title, rest = extract_title_and_body(narr.body)
     rest = demote_headings(rest, 1)
-    rest = rewrite_links(rest, all_slugs)
+    rest = rewrite_links(rest, all_slugs, source_path=narr.path, path_slugs=path_slugs)
     return f"## {title} {{#{narr.slug}}}\n\n{rest}\n"
 
 
-def render_part(narr: Note, all_slugs: set[str]) -> str:
+def render_part(narr: Note, all_slugs: set[str], *, path_slugs=None) -> str:
     """Part narrative: H2."""
     title, rest = extract_title_and_body(narr.body)
     rest = demote_headings(rest, 1)
-    rest = rewrite_links(rest, all_slugs)
+    rest = rewrite_links(rest, all_slugs, source_path=narr.path, path_slugs=path_slugs)
     return f"## {title} {{#{narr.slug}}}\n\n{rest}\n"
 
 
-def render_chapter(narr: Note, all_slugs: set[str]) -> str:
+def render_chapter(narr: Note, all_slugs: set[str], *, path_slugs=None) -> str:
     """Chapter narrative: H3 inside a part."""
     title, rest = extract_title_and_body(narr.body)
     rest = demote_headings(rest, 2)
-    rest = rewrite_links(rest, all_slugs)
+    rest = rewrite_links(rest, all_slugs, source_path=narr.path, path_slugs=path_slugs)
     return f"### {title} {{#{narr.slug}}}\n\n{rest}\n"
 
 
-def render_block(note: Note, all_slugs: set[str]) -> str:
+def render_block(note: Note, all_slugs: set[str], *, path_slugs=None) -> str:
     """Inline content block: H4, kind-prefixed."""
     title, rest = extract_title_and_body(note.body)
     rest = demote_headings(rest, 3)
-    rest = rewrite_links(rest, all_slugs)
+    rest = rewrite_links(rest, all_slugs, source_path=note.path, path_slugs=path_slugs)
     label = KIND_LABEL.get(note.kind, note.kind.capitalize())
     badge = ""
     status = note.fm.get("status")
@@ -98,10 +105,10 @@ def render_block(note: Note, all_slugs: set[str]) -> str:
     return f"{heading}\n\n{rest}\n"
 
 
-def render_question(note: Note, all_slugs: set[str]) -> str:
+def render_question(note: Note, all_slugs: set[str], *, path_slugs=None) -> str:
     title, rest = extract_title_and_body(note.body)
     rest = demote_headings(rest, 3)
-    rest = rewrite_links(rest, all_slugs)
+    rest = rewrite_links(rest, all_slugs, source_path=note.path, path_slugs=path_slugs)
     label = KIND_LABEL["question"]
     status = note.fm.get("status", "open")
     badge = f" [{status.upper()}]" if status != "open" else ""
@@ -127,7 +134,7 @@ def render_appendix_questions(corpus: Corpus, all_slugs: set[str]) -> str:
         "the objects, concepts, or theorems that situate the inquiry.\n"
     )
     for s in questions:
-        parts.append(render_question(corpus[s], all_slugs))
+        parts.append(render_question(corpus[s], all_slugs, path_slugs=corpus.path_slugs))
         parts.append("")
     return "\n".join(parts)
 
@@ -155,7 +162,7 @@ def render_appendix_further_reading(corpus: Corpus, all_slugs: set[str]) -> str:
     for s, n in refs:
         title, rest = extract_title_and_body(n.body)
         rest = demote_headings(rest, 3)
-        rest = rewrite_links(rest, all_slugs)
+        rest = rewrite_links(rest, all_slugs, source_path=n.path, path_slugs=corpus.path_slugs)
         fm = n.fm
         authors = fm.get("authors") or []
         year = fm.get("year") or ""

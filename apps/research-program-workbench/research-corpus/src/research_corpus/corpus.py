@@ -57,6 +57,10 @@ class Corpus:
         return set(self.notes.keys())
 
     @property
+    def path_slugs(self) -> dict[str, str]:
+        return {note.path.as_posix(): slug for slug, note in self.notes.items()}
+
+    @property
     def bib_path(self) -> Path:
         return self.config.bib_path
 
@@ -81,10 +85,18 @@ def load(root: Path | None = None, *, config: ProgramConfig | None = None) -> Co
 
     for d in config.lib_dirs:
         dir_path = root / d
+        if not dir_path.resolve().is_relative_to(root.resolve()):
+            parse_errors.append(Diagnostic(
+                code="corpus-directory",
+                severity="error",
+                path=Path(d),
+                message="configured corpus directory leaves the selected root",
+            ))
+            continue
         if not dir_path.is_dir():
             continue
         for p in sorted(dir_path.glob("*.md")):
-            if p.name == "README.md":
+            if p.name == "README.md" or p.is_symlink():
                 continue
             rel = p.relative_to(root)
             try:
@@ -95,6 +107,23 @@ def load(root: Path | None = None, *, config: ProgramConfig | None = None) -> Co
                     severity="error",
                     path=rel,
                     message=str(e),
+                ))
+                continue
+            # Science notes declare `type`; the recovered toolkit also accepts
+            # its original `kind`. Conflicting declarations need source repair.
+            declared_type = fm.get("type")
+            legacy_kind = fm.get("kind")
+            kind = declared_type if declared_type is not None else legacy_kind
+            if kind is None:
+                kind = Path(d).name.rstrip("s")
+            if (not isinstance(kind, str) or not kind.strip()
+                    or (declared_type is not None and legacy_kind is not None
+                        and declared_type != legacy_kind)):
+                parse_errors.append(Diagnostic(
+                    code="frontmatter-kind",
+                    severity="error",
+                    path=rel,
+                    message="type and kind must be nonempty strings and agree when both are present",
                 ))
                 continue
             slug = p.stem
@@ -109,7 +138,7 @@ def load(root: Path | None = None, *, config: ProgramConfig | None = None) -> Co
             notes[slug] = Note(
                 slug=slug,
                 dir=d,
-                kind=fm.get("kind", d.rstrip("s")),
+                kind=kind,
                 fm=fm,
                 body=body,
                 path=rel,

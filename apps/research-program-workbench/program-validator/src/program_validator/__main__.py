@@ -18,6 +18,8 @@ from .report import render
 # wip-theorems, missing-annotation, missing-status, symbol-collision) do not.
 HARD_CODES = {
     "frontmatter-parse",
+    "frontmatter-kind",
+    "corpus-directory",
     "slug-collision",
     "bib-error",
     "broken-link",

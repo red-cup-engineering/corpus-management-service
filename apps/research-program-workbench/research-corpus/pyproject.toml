@@ -5,6 +5,9 @@ description = "Library: parse and graph a frontmatter-markdown research library.
 requires-python = ">=3.11"
 dependencies = ["pyyaml>=6"]
 
+[project.scripts]
+research-vocabulary = "research_corpus.vocabulary:main"
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"

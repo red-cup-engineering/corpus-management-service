@@ -5,7 +5,7 @@ Public surface:
     from research_corpus import Corpus, Note, Diagnostic, ProgramConfig
     from research_corpus import load, find_root, RELATION_KEYS
 """
-from .config import ProgramConfig, find_root
+from .config import ProgramConfig, VocabularyConfig, find_root
 from .corpus import Corpus, Note, load
 from .diagnostics import Diagnostic
 from .graph import (
@@ -19,7 +19,7 @@ from .graph import (
     topo_sort,
     transitive_deps,
 )
-from .links import LINK_RE, find_cross_refs
+from .links import LINK_RE, MarkdownLink, find_cross_refs, find_markdown_links, resolve_link_slug
 from .citations import CITE_RE, parse_bib_keys, parse_bib_diagnostics
 
 __all__ = [
@@ -27,6 +27,7 @@ __all__ = [
     "Note",
     "Diagnostic",
     "ProgramConfig",
+    "VocabularyConfig",
     "load",
     "find_root",
     "RELATION_KEYS",
@@ -39,7 +40,10 @@ __all__ = [
     "topo_sort",
     "transitive_deps",
     "LINK_RE",
+    "MarkdownLink",
     "find_cross_refs",
+    "find_markdown_links",
+    "resolve_link_slug",
     "CITE_RE",
     "parse_bib_keys",
     "parse_bib_diagnostics",

@@ -35,6 +35,35 @@ class AuditConfig:
     output: str = "tools/build/dependency-audit.md"
 
 
+@dataclass(frozen=True)
+class VocabularyConfig:
+    scheme: str
+    namespace: str
+    document_base_url: str
+    output: str
+    members: tuple[str, ...]
+
+
+def _vocabulary_config(value: object) -> VocabularyConfig | None:
+    if value is None:
+        return None
+    fields = {"scheme", "namespace", "document_base_url", "output", "members"}
+    if not isinstance(value, dict) or set(value) != fields:
+        raise ValueError("[vocabulary] requires exactly " + ", ".join(sorted(fields)))
+    for key in fields - {"members"}:
+        if not isinstance(value[key], str) or not value[key].strip():
+            raise ValueError(f"vocabulary.{key} must be a nonempty string")
+    members = value["members"]
+    if (not isinstance(members, list) or not members
+            or any(not isinstance(item, str) or not item for item in members)):
+        raise ValueError("vocabulary.members must be a nonempty array of paths")
+    return VocabularyConfig(
+        scheme=value["scheme"], namespace=value["namespace"],
+        document_base_url=value["document_base_url"], output=value["output"],
+        members=tuple(members),
+    )
+
+
 @dataclass
 class ProgramConfig:
     root: Path
@@ -44,6 +73,7 @@ class ProgramConfig:
     compose: ComposeConfig = field(default_factory=ComposeConfig)
     plan: PlanConfig = field(default_factory=PlanConfig)
     audit: AuditConfig = field(default_factory=AuditConfig)
+    vocabulary: VocabularyConfig | None = None
 
     @property
     def bib_path(self) -> Path:
@@ -105,4 +135,5 @@ def load_config(root: Path) -> ProgramConfig:
         audit=AuditConfig(
             output=audit.get("output", "tools/build/dependency-audit.md"),
         ),
+        vocabulary=_vocabulary_config(data.get("vocabulary")),
     )

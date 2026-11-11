@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import re
+from pathlib import PurePosixPath
 from typing import Mapping
 
 from research_corpus import (
-    LINK_RE,
+    find_cross_refs,
     ancestors as ancestors_set,
     descendants as descendants_set,
     descendant_counts,
@@ -12,6 +13,7 @@ from research_corpus import (
     reverse_depends_on,
 )
 from research_corpus.corpus import Corpus
+from research_corpus.links import prose_links_text
 
 SECTION_RE = re.compile(r"^(#{2,6})\s+(.+?)(?:\s*\{#[^}]+\})?\s*$", re.MULTILINE)
 
@@ -90,21 +92,26 @@ def _is_informational(heading: str) -> bool:
     return bool(INFORMATIONAL_HEADING_RE.match(heading.strip()))
 
 
-def load_bearing_links(body: str, self_slug: str) -> set[str]:
+def load_bearing_links(body: str, self_slug: str, *,
+                       source_path: PurePosixPath | None = None,
+                       path_slugs: Mapping[str, str] | None = None) -> set[str]:
     """Slug references in non-informational sections of `body`."""
     out: set[str] = set()
-    for heading, content in _split_into_sections(body):
+    for heading, content in _split_into_sections(prose_links_text(body)):
         if _is_informational(heading):
             continue
-        for m in LINK_RE.finditer(content):
-            slug = m.group(2)
+        for slug in find_cross_refs(content, source_path=source_path, path_slugs=path_slugs):
             if slug != self_slug:
                 out.add(slug)
     return out
 
 
-def all_body_links(body: str, self_slug: str) -> set[str]:
-    return {m[1] for m in LINK_RE.findall(body) if m[1] != self_slug}
+def all_body_links(body: str, self_slug: str, *,
+                    source_path: PurePosixPath | None = None,
+                    path_slugs: Mapping[str, str] | None = None) -> set[str]:
+    return {slug for slug in find_cross_refs(
+        body, source_path=source_path, path_slugs=path_slugs,
+    ) if slug != self_slug}
 
 
 def crossref_vs_depends_on(corpus: Corpus,
@@ -130,7 +137,9 @@ def crossref_vs_depends_on(corpus: Corpus,
     for slug, n in corpus.items():
         if skip_citing_kinds and n.kind in skip_citing_kinds:
             continue
-        body_links = (load_bearing_links if section_filter else all_body_links)(n.body, slug)
+        body_links = (load_bearing_links if section_filter else all_body_links)(
+            n.body, slug, source_path=n.path, path_slugs=corpus.path_slugs,
+        )
         body_links = {b for b in body_links if b in corpus}
         if drop_kinds:
             body_links = {b for b in body_links if corpus[b].kind not in drop_kinds}
