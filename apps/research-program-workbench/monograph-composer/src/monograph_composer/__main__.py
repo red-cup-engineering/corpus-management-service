@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -14,10 +15,12 @@ from .pandoc import PandocError, ensure_pandoc, run as run_pandoc
 from .render import (
     render_appendix_further_reading,
     render_appendix_questions,
+    render_appendix_source_notes,
     render_block,
     render_chapter,
     render_part,
     render_preface,
+    source_note_slugs,
 )
 
 
@@ -55,12 +58,12 @@ def _yaml_preamble(title: str | None, subtitle: str | None,
                    bib_relpath: str | None) -> list[str]:
     out = ["---"]
     if title:
-        out.append(f"title: {title}")
+        out.append("title: " + json.dumps(title))
     if subtitle:
-        out.append(f"subtitle: {subtitle}")
+        out.append("subtitle: " + json.dumps(subtitle))
     if bib_relpath:
         out += [
-            f"bibliography: {bib_relpath}",
+            "bibliography: " + json.dumps(bib_relpath),
             "link-citations: true",
             "reference-section-title: References",
             "reference-section-level: 3",
@@ -97,7 +100,8 @@ def build_composed(corpus, order, chapter_content, chapter_order, part_num_to_na
 
     appendix = render_appendix_questions(corpus, all_slugs)
     further = render_appendix_further_reading(corpus, all_slugs)
-    if appendix or further:
+    source_notes = render_appendix_source_notes(corpus, all_slugs)
+    if appendix or further or source_notes:
         parts.append("## Supplements {#supplements}")
         parts.append("")
     if appendix:
@@ -105,6 +109,9 @@ def build_composed(corpus, order, chapter_content, chapter_order, part_num_to_na
         parts.append("")
     if further:
         parts.append(further)
+        parts.append("")
+    if source_notes:
+        parts.append(source_notes)
         parts.append("")
 
     return "\n".join(parts)
@@ -150,6 +157,9 @@ def main(argv: list[str] | None = None) -> int:
         if n.kind == "narrative" and n.fm.get("position") == "chapter":
             marker = "C"
         manifest_lines.append(f"{marker} {n.dir}/{s}\t{n.kind}")
+    for s in source_note_slugs(corpus):
+        n = corpus[s]
+        manifest_lines.append(f"R {n.dir}/{s}\t{n.kind}")
     manifest_path.write_text("\n".join(manifest_lines) + "\n")
 
     # Generate a fresh references.bib from the citation corpus to a build-dir
@@ -168,12 +178,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     composed_path.write_text(composed)
 
-    print(f"manifest:    {manifest_path}  ({len(order)} entries)")
+    print(f"manifest:    {manifest_path}  ({len(manifest_lines)} entries)")
     print(f"composed.md: {composed_path}  ({len(composed):,} chars)")
 
     if args.diagnose:
         print()
-        print("ORDER (C = chapter):")
+        print("ORDER (C = chapter, R = source-note appendix):")
         for line in manifest_lines:
             print("  " + line)
 

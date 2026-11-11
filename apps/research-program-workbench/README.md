@@ -73,6 +73,20 @@ outside the configured corpus cannot become an edge to the living definition.
 The shared scanner excludes fenced code, inline code, HTML comments, images,
 and escaped link examples, and accepts percent-encoded paths and quoted titles.
 
+The composer includes indexed `type: reference` notes outside the legacy root
+`references/` directory in a **Source notes** appendix. Each has its own stable
+slug anchor and full annotation body, including source-verification limits and
+literal code examples. The composition manifest marks these entries with `R`.
+Links between the lessons and source annotations therefore point to emitted
+content. The original root `references/` further-reading/citeproc pathway stays
+separate; nested typed notes are not implicitly converted into BibTeX records.
+Generated YAML metadata quotes title, subtitle and bibliography strings so that
+colons, quotation marks, newlines and Unicode retain their values when parsed.
+
+```sh
+python -m unittest discover -s monograph-composer/tests -v
+```
+
 Run the original validator before composing a document:
 
 ```sh
