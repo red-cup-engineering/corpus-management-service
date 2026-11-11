@@ -22,7 +22,9 @@ def check(corpus: Corpus) -> Iterator[Diagnostic]:
                 referenced.update(v)
             elif isinstance(v, str):
                 referenced.add(v)
-        referenced.update(find_cross_refs(note.body))
+        referenced.update(find_cross_refs(
+            note.body, source_path=note.path, path_slugs=corpus.path_slugs,
+        ))
         referenced.update(CITE_RE.findall(note.body))
 
     for note in corpus:

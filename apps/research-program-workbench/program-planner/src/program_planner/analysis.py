@@ -17,7 +17,7 @@ THEOREM_KINDS = ("theorem", "lemma", "proposition", "corollary")
 ANCHOR_KINDS = ("definition", "concept", "morphism")
 
 
-def out_edges(note, body_links: bool = True) -> set[str]:
+def out_edges(note, body_links: bool = True, *, corpus: Corpus | None = None) -> set[str]:
     edges: set[str] = set()
     for k in RELATION_KEYS:
         v = note.fm.get(k)
@@ -26,7 +26,10 @@ def out_edges(note, body_links: bool = True) -> set[str]:
         elif isinstance(v, str):
             edges.add(v)
     if body_links:
-        edges.update(find_cross_refs(note.body))
+        edges.update(find_cross_refs(
+            note.body, source_path=note.path,
+            path_slugs=corpus.path_slugs if corpus else None,
+        ))
     return edges
 
 
@@ -34,7 +37,7 @@ def in_edges_index(corpus: Corpus) -> dict[str, set[str]]:
     """slug → set of slugs that point to it."""
     idx: dict[str, set[str]] = defaultdict(set)
     for slug, n in corpus.items():
-        for tgt in out_edges(n):
+        for tgt in out_edges(n, corpus=corpus):
             if tgt in corpus:
                 idx[tgt].add(slug)
     return idx

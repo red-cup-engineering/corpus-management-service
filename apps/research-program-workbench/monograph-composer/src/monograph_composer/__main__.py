@@ -79,20 +79,20 @@ def build_composed(corpus, order, chapter_content, chapter_order, part_num_to_na
     # Preliminaries: notes with no chapter assignment.
     for s in chapter_content.get(None, []):
         if notes[s].kind == "narrative":
-            parts.append(render_preface(notes[s], all_slugs))
+            parts.append(render_preface(notes[s], all_slugs, path_slugs=corpus.path_slugs))
         else:
-            parts.append(render_block(notes[s], all_slugs))
+            parts.append(render_block(notes[s], all_slugs, path_slugs=corpus.path_slugs))
         parts.append("")
 
     for part_num in sorted(part_num_to_narrative):
         pn_slug = part_num_to_narrative[part_num]
-        parts.append(render_part(notes[pn_slug], all_slugs))
+        parts.append(render_part(notes[pn_slug], all_slugs, path_slugs=corpus.path_slugs))
         parts.append("")
         for ch in notes[pn_slug].fm.get("chapters") or []:
-            parts.append(render_chapter(notes[ch], all_slugs))
+            parts.append(render_chapter(notes[ch], all_slugs, path_slugs=corpus.path_slugs))
             parts.append("")
             for s in chapter_content.get(ch, []):
-                parts.append(render_block(notes[s], all_slugs))
+                parts.append(render_block(notes[s], all_slugs, path_slugs=corpus.path_slugs))
                 parts.append("")
 
     appendix = render_appendix_questions(corpus, all_slugs)

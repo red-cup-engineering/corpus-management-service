@@ -30,6 +30,65 @@ Pass `--out /path/to/report.md` to `program-auditor` to select the report output
 
 The original Pandoc pipeline may be selected separately from a qualified host. Bibliography generation consumes the same local `research-citations` workspace package; the original `research-dagger` ordering function remains importable, without a compatibility wrapper.
 
+## Living Science sections
+
+The same workbench reads a section's maintained glossary, claims, and teaching
+articles. Select their actual leaf directories in the section's `research.toml`:
+
+```toml
+[program]
+title = "Relationality"
+
+[corpus]
+lib_dirs = [
+  "content/text/glossary/terms",
+  "content/text/glossary/concepts",
+  "content/text/glossary/topics",
+  "content/text/documents/articles/teaching-articles/explanations",
+  "content/text/documents/articles/learning-articles/claims",
+  "references",
+]
+```
+
+Each directory contributes its direct Markdown files. This bounded selection
+does not recursively enroll `lib/legacy`, a nested archive, or unrelated section
+content. Symbolic-link files are excluded and a configured directory that leaves
+the selected root fails validation. `README.md` remains navigation rather than a
+research entity. Inspect `total_notes` in the JSON report alongside diagnostics.
+
+Science's canonical `type:` supplies the note type. The original `kind:` field
+remains supported; differing `type` and `kind` declarations fail validation.
+Without either field, the leaf directory supplies the historical singularized
+default. A narrative in a deeply nested teaching directory is therefore still a
+narrative, and a `type: question` still participates in the existing planner.
+Duplicate slugs remain hard errors rather than selecting one copy silently.
+
+Local inline Markdown links are resolved from the source file's directory.
+`../../../glossary/terms/relating.md` must name that exact file; another
+`relating.md` elsewhere cannot satisfy it. Existing local navigation files may
+be linked without entering the configured research corpus. The planner,
+dependency auditor, and monograph composer use exact indexed paths when turning
+body links into graph edges or composed-document anchors. A historical homonym
+outside the configured corpus cannot become an edge to the living definition.
+The shared scanner excludes fenced code, inline code, HTML comments, images,
+and escaped link examples, and accepts percent-encoded paths and quoted titles.
+
+Run the original validator before composing a document:
+
+```sh
+uv run program-validator --root /path/to/science-section --no-lean --format json
+```
+
+This check covers local inline `.md` file destinations. It does not fetch network
+URLs, validate fragment anchors, or parse reference-style links or HTML anchors.
+It validates structure and source identity, not a claim's scientific truth.
+The receiving tests exercise the same CLI, planner, auditor and composer with
+the Relationality section's nested directory shapes:
+
+```sh
+python -m unittest discover -s program-validator/tests -v
+```
+
 ## First-class Science question → research-program focus
 
 The existing Red Cup **record-research-question-service** writes an original
