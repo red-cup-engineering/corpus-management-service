@@ -27,5 +27,9 @@
     "@red-cup-engineering/uri-services-section": "workspace:*",
     "@red-cup-engineering/witness-journal-document-service": "workspace:*"
   },
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/red-cup-engineering/corpus-management-service.git"
+  }
 }
