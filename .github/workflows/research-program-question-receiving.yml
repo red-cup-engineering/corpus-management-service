@@ -69,6 +69,7 @@ jobs:
             -e apps/research-program-workbench/cite-tool
       - name: Validate living Science sections and citation preservation
         run: |
+          python -m unittest discover -s apps/research-program-workbench/research-corpus/tests -v
           python -m unittest discover -s apps/research-program-workbench/program-validator/tests -v
           python -m unittest discover -s apps/research-program-workbench/research-citations/tests -v
           python -m unittest discover -s apps/research-program-workbench/cite-tool/tests -v

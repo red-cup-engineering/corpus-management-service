@@ -89,6 +89,72 @@ the Relationality section's nested directory shapes:
 python -m unittest discover -s program-validator/tests -v
 ```
 
+### Generate a reviewed vocabulary from the source notes
+
+The `research-vocabulary` command projects selected glossary frontmatter to
+[SKOS](https://www.w3.org/TR/skos-reference/) in
+[Turtle](https://www.w3.org/TR/turtle/). The Markdown source remains the editable
+definition; the generated vocabulary is a reproducible view of that source.
+Add an explicit selection to the same `research.toml`:
+
+```toml
+[vocabulary]
+scheme = "urn:561:relationality:vocabulary"
+namespace = "urn:561:relationality:concept:"
+document_base_url = "https://github.com/lenticule-science/relationality-science-services-section/blob/main"
+output = "data/records/ontology.ttl"
+members = [
+  "content/text/glossary/terms/relating.md",
+  "content/text/glossary/concepts/attending.md",
+]
+```
+
+Each member must be an exact path already indexed by `[corpus].lib_dirs`. A
+matching filename elsewhere cannot supply the source. The selection controls
+only this vocabulary projection; it does not remove unselected notes or their
+diagnostics from whole-corpus validation. Configurations without `[vocabulary]`
+keep their existing behavior. Invoking the exporter without it is an error.
+
+```sh
+uv run research-vocabulary --root /path/to/science-section
+uv run research-vocabulary --root /path/to/science-section --check
+```
+
+The command is also available as `python -m research_corpus.vocabulary`. Normal
+mode validates every selected source before atomically replacing the configured
+Turtle file. `--check` compares expected UTF-8 bytes without writing. Exit status
+is `0` for a successful write or current output, `1` for missing/stale output in
+check mode, and `2` for invalid input or an I/O error. The output must be a
+root-relative `.ttl` path and cannot be a symbolic link or escape the root.
+
+For each member the exporter emits `skos:Concept`, `skos:prefLabel` from `name`
+(or `title` when `name` is absent), `skos:definition` from `description`,
+`skos:inScheme`, and `rdfs:isDefinedBy` using the document base URL plus the
+percent-encoded source path. An original `id`, when present, is preserved as a
+`dct:identifier` string. Concept IRIs append the percent-encoded filename stem
+to `namespace`, which must end in `/`, `#`, or `:`. The document base must be
+HTTP(S) without a query or fragment. Labels and definitions must be nonempty
+strings; missing sources, selected slug collisions and duplicate members fail.
+
+Source HTTP(S) and URN IRIs from `source`, `original-source`, `sources`, or
+`provenance` become `prov:wasDerivedFrom` statements. A dedicated `sources`
+array must contain IRIs. Descriptive provenance may be a string, list or mapping;
+recognized `url`, `source_url`, `source-url`, `source`, `original-source`, and
+`sources` fields retain actual IRIs. Free prose and owner names remain in the
+source note. An attempted malformed URL is refused, and no URI is invented from
+descriptive text. Source declarations are preserved claims of derivation, not
+independent authentication or verification that remote resources are available.
+
+The projection orders members and source IRIs deterministically and does not
+guess semantic relationships from body links. Validate any additional ontology
+contract with the section's SHACL shapes. Native receiving tests cover source
+selection, escaping, provenance, drift, refusal without output replacement, and
+the actual nested glossary directory shape:
+
+```sh
+python -m unittest discover -s research-corpus/tests -v
+```
+
 ## First-class Science question → research-program focus
 
 The existing Red Cup **record-research-question-service** writes an original

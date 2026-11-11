@@ -5,7 +5,7 @@ Public surface:
     from research_corpus import Corpus, Note, Diagnostic, ProgramConfig
     from research_corpus import load, find_root, RELATION_KEYS
 """
-from .config import ProgramConfig, find_root
+from .config import ProgramConfig, VocabularyConfig, find_root
 from .corpus import Corpus, Note, load
 from .diagnostics import Diagnostic
 from .graph import (
@@ -27,6 +27,7 @@ __all__ = [
     "Note",
     "Diagnostic",
     "ProgramConfig",
+    "VocabularyConfig",
     "load",
     "find_root",
     "RELATION_KEYS",
