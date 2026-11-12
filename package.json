@@ -25,7 +25,8 @@
     "@red-cup-engineering/json-schema-services-section": "^0.5.4",
     "@red-cup-engineering/semiotic-eavt-services-section": "^0.3.2",
     "@red-cup-engineering/uri-services-section": "^0.1.5",
-    "@red-cup-engineering/witness-journal-document-service": "^0.1.2"
+    "@red-cup-engineering/witness-journal-document-service": "^0.1.2",
+    "@red-cup-engineering/semiotic-eavt-engineering-services-section": "^0.6.0"
   },
   "license": "UNLICENSED",
   "repository": {
