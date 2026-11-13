@@ -22,9 +22,9 @@
     "@red-cup-engineering/computer-code-engineering-services-section": "^0.2.1",
     "@red-cup-engineering/computer-content-address-engineering-services-section": "^0.2.3",
     "@red-cup-engineering/cryptographic-computer-data-engineering-services-section": "^0.3.3",
-    "@red-cup-engineering/json-schema-services-section": "^0.5.4",
+    "@red-cup-engineering/json-schema-engineering-services-section": "^0.5.4",
     "@red-cup-engineering/semiotic-eavt-services-section": "^0.3.2",
-    "@red-cup-engineering/uri-services-section": "^0.1.5",
+    "@red-cup-engineering/uri-engineering-services-section": "^0.1.5",
     "@red-cup-engineering/witness-journal-document-service": "^0.1.2",
     "@red-cup-engineering/semiotic-eavt-engineering-services-section": "^0.6.0"
   },

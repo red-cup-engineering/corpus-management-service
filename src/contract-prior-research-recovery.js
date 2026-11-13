@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { makeNiUri } from "@red-cup-engineering/uri-services-section/ni-uri";
+import { makeNiUri } from "@red-cup-engineering/uri-engineering-services-section/ni-uri";
 import { spawnSync } from "node:child_process";
 import { closeSync, existsSync, openSync, readFileSync, readdirSync, readSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
