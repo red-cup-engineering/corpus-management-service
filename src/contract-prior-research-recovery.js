@@ -10,7 +10,7 @@ import { canonical, contentId, digest } from "./lib/knowledge-forms.mjs";
 import { createSemanticRecordJournal } from "@red-cup-engineering/semiotic-eavt-services-section/record-semantic-record";
 
 const CONTEXT = "https://www.w3.org/ns/activitystreams";
-const NODE_ID = "corpus-management-team";
+const NODE_ID = "corpus-management-science-services-section";
 const ACTOR = `urn:ame:${NODE_ID}`;
 const LMT_ACTOR = "urn:ame:leader-movement-team";
 const CONTRACT = PRIOR_RESEARCH_CONTRACT;

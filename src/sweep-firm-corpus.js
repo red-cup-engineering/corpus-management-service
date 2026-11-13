@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Sweeps a filesystem subtree for candidate prior-art assets matching bounded
-// keywords, packages them as corpus-management-team knowledge forms, and
+// keywords, packages them as corpus-management-science-services-section knowledge forms, and
 // runs the team's own deterministic analyzeForms pipeline over them. A shared
 // base filename is recorded as unresolved evidence; model output cannot settle
 // identity and no private inference harness is embedded in this settlement.
@@ -18,7 +18,7 @@ const NODE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SKIP_DIRS = new Set([".git", "node_modules", "data"]);
 const DEFAULT_MAX_FILES = 200;
 const DEFAULT_MAX_TERRITORIES = 64;
-const ACTOR = "urn:ame:corpus-management-team";
+const ACTOR = "urn:ame:corpus-management-science-services-section";
 const TERRITORY_MARKERS = new Set(["package.json", "Cargo.toml", "lakefile.lean", "lean-toolchain", "pyproject.toml", "go.mod"]);
 
 function arg(flag) {

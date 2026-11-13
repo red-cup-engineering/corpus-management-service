@@ -7,7 +7,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import { createSemanticRecordJournal } from "@red-cup-engineering/semiotic-eavt-services-section/record-semantic-record";
 import { canonical, digest, contentId, analyzeForms } from "./lib/knowledge-forms.mjs";
 
-const NODE_ID = "corpus-management-team";
+const NODE_ID = "corpus-management-science-services-section";
 const ACTOR = `urn:ame:${NODE_ID}`;
 const CONTEXT = "https://www.w3.org/ns/activitystreams";
 const SERVICE_CONTRACT = CORPUS_KNOWLEDGE_CONTRACT;
