@@ -24,6 +24,10 @@ KIND_LABEL: dict[str, str] = {
 
 H1_RE = re.compile(r"^# (.+?)(?:\s*\{#[^}]+\})?\s*$", re.MULTILINE)
 HEADING_RE = re.compile(r"^(#+)(?=\s)", re.MULTILINE)
+LEADING_NOTE_HEADING_RE = re.compile(
+    r"\A(?:[ \t]*\n)* {0,3}#{1,6}[ \t]+(?P<title>.*?\S)[ \t]+"
+    r"\{#(?P<anchor>[^}\s]+)\}[ \t]*(?:\n|$)"
+)
 LEAN_SECTION_RE = re.compile(
     r"^## +Lean\b.*?(?=^#{1,2} |\Z)", re.MULTILINE | re.DOTALL,
 )
@@ -72,35 +76,47 @@ def rewrite_links(body: str, all_slugs: set[str], *,
     return body
 
 
+def _render_note_contents(
+    note: Note, all_slugs: set[str], heading_offset: int, *, path_slugs=None,
+    strip_lean: bool = True,
+) -> tuple[str, str]:
+    """Receive a leading same-ID title at the existing canonical wrapper."""
+    leading = LEADING_NOTE_HEADING_RE.match(note.body)
+    if leading is not None and leading["anchor"] == note.slug:
+        title = leading["title"]
+        rest = note.body[leading.end():]
+        if strip_lean:
+            # Preserve headings inside literal code in a promoted note too.
+            for section in reversed(list(LEAN_SECTION_RE.finditer(prose_links_text(rest)))):
+                rest = rest[:section.start()] + rest[section.end():]
+        rest = demote_headings(rest.strip(), heading_offset, prose_only=True)
+    else:
+        title, rest = extract_title_and_body(note.body, strip_lean=strip_lean)
+        rest = demote_headings(rest, heading_offset, prose_only=not strip_lean)
+    return title, rewrite_links(rest, all_slugs, source_path=note.path, path_slugs=path_slugs)
+
+
 def render_preface(narr: Note, all_slugs: set[str], *, path_slugs=None) -> str:
     """Positionless overview narrative: H2, body subsections demoted by 1."""
-    title, rest = extract_title_and_body(narr.body)
-    rest = demote_headings(rest, 1)
-    rest = rewrite_links(rest, all_slugs, source_path=narr.path, path_slugs=path_slugs)
+    title, rest = _render_note_contents(narr, all_slugs, 1, path_slugs=path_slugs)
     return f"## {title} {{#{narr.slug}}}\n\n{rest}\n"
 
 
 def render_part(narr: Note, all_slugs: set[str], *, path_slugs=None) -> str:
     """Part narrative: H2."""
-    title, rest = extract_title_and_body(narr.body)
-    rest = demote_headings(rest, 1)
-    rest = rewrite_links(rest, all_slugs, source_path=narr.path, path_slugs=path_slugs)
+    title, rest = _render_note_contents(narr, all_slugs, 1, path_slugs=path_slugs)
     return f"## {title} {{#{narr.slug}}}\n\n{rest}\n"
 
 
 def render_chapter(narr: Note, all_slugs: set[str], *, path_slugs=None) -> str:
     """Chapter narrative: H3 inside a part."""
-    title, rest = extract_title_and_body(narr.body)
-    rest = demote_headings(rest, 2)
-    rest = rewrite_links(rest, all_slugs, source_path=narr.path, path_slugs=path_slugs)
+    title, rest = _render_note_contents(narr, all_slugs, 2, path_slugs=path_slugs)
     return f"### {title} {{#{narr.slug}}}\n\n{rest}\n"
 
 
 def render_block(note: Note, all_slugs: set[str], *, path_slugs=None) -> str:
     """Inline content block: H4, kind-prefixed."""
-    title, rest = extract_title_and_body(note.body)
-    rest = demote_headings(rest, 3)
-    rest = rewrite_links(rest, all_slugs, source_path=note.path, path_slugs=path_slugs)
+    title, rest = _render_note_contents(note, all_slugs, 3, path_slugs=path_slugs)
     label = KIND_LABEL.get(note.kind, note.kind.capitalize())
     badge = ""
     status = note.fm.get("status")
@@ -115,9 +131,7 @@ def render_block(note: Note, all_slugs: set[str], *, path_slugs=None) -> str:
 
 
 def render_question(note: Note, all_slugs: set[str], *, path_slugs=None) -> str:
-    title, rest = extract_title_and_body(note.body)
-    rest = demote_headings(rest, 3)
-    rest = rewrite_links(rest, all_slugs, source_path=note.path, path_slugs=path_slugs)
+    title, rest = _render_note_contents(note, all_slugs, 3, path_slugs=path_slugs)
     label = KIND_LABEL["question"]
     status = note.fm.get("status", "open")
     badge = f" [{status.upper()}]" if status != "open" else ""
@@ -169,9 +183,7 @@ def render_appendix_further_reading(corpus: Corpus, all_slugs: set[str]) -> str:
         "entry summarises the work and its relevance.\n"
     )
     for s, n in refs:
-        title, rest = extract_title_and_body(n.body)
-        rest = demote_headings(rest, 3)
-        rest = rewrite_links(rest, all_slugs, source_path=n.path, path_slugs=corpus.path_slugs)
+        title, rest = _render_note_contents(n, all_slugs, 3, path_slugs=corpus.path_slugs)
         fm = n.fm
         authors = fm.get("authors") or []
         year = fm.get("year") or ""
@@ -209,9 +221,8 @@ def render_appendix_source_notes(corpus: Corpus, all_slugs: set[str]) -> str:
              "its relation to this research.\n"]
     for slug in slugs:
         note = corpus[slug]
-        title, rest = extract_title_and_body(note.body, strip_lean=False)
+        title, rest = _render_note_contents(note, all_slugs, 3, path_slugs=corpus.path_slugs,
+                                           strip_lean=False)
         title = title or note.fm.get("title") or note.fm.get("name") or slug
-        rest = rewrite_links(demote_headings(rest, 3, prose_only=True), all_slugs,
-                             source_path=note.path, path_slugs=corpus.path_slugs)
         parts.extend([f"#### {title} {{#{slug}}}", "", rest, ""])
     return "\n".join(parts)

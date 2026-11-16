@@ -78,7 +78,7 @@ jobs:
             sudo apt-get install -y --no-install-recommends pandoc
           fi
           pandoc --version
-      - name: Verify citation preflight against actual Pandoc output
+      - name: Verify reader preflight and anchors against actual Pandoc output
         run: |
           python -m unittest discover -s apps/research-program-workbench/monograph-composer/tests -v
       - name: Validate living Science sections and citation preservation

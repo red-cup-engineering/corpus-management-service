@@ -323,3 +323,12 @@ Missing keys are listed, and neither the reader nor the composer artifacts
 are written on failure. This checks bibliographic receiving, not the truth
 of a citation or the scholarly adequacy of its use. See
 [Pandoc citation syntax](https://pandoc.org/MANUAL.html#citation-syntax).
+
+
+### Preserve a note's canonical reader address
+
+When a note starts with a simple explicit heading whose ID matches the note
+slug, the composer uses its authored title at the existing reader wrapper.
+It does not emit that address twice or rename it. Different subsection IDs
+and literal code in the promoted note remain distinct. This does not rename
+arbitrary duplicate anchors elsewhere in the input.
