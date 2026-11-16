@@ -291,3 +291,22 @@ bibliography. Each check exercises the original producer or consumer rather
 than checking code strings. These are bounded integration checks, separate
 from the provider-backed planner workflow and from qualification of a
 particular scientific corpus.
+
+
+### Require reader citations to resolve
+
+```sh
+monograph-composer --root SCIENCE_CHECKOUT --out build/reader.md --require-resolved-citations
+```
+
+The option asks the original Pandoc reader which citation identifiers it
+actually sees, then checks the exact bibliography selected by the composer.
+Native grouped, suppressed-author, and braced keys keep their case and
+punctuation; examples in code are not citations. The normal bibliography
+selection is unchanged: an admitted generated bibliography takes precedence
+over the configured fallback. The fallback is not an implicit second pool of
+records. The preflight requires Pandoc and a selected `.bib` for any citations.
+Missing keys are listed, and neither the reader nor the composer artifacts
+are written on failure. This checks bibliographic receiving, not the truth
+of a citation or the scholarly adequacy of its use. See
+[Pandoc citation syntax](https://pandoc.org/MANUAL.html#citation-syntax).

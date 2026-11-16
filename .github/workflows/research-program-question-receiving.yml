@@ -70,6 +70,17 @@ jobs:
       - name: Verify the installed corpus diagnostic comparison
         run: |
           python -m unittest discover -s apps/research-program-workbench/program-validator/tests -v
+      - name: Ensure the native citation renderer is available
+        shell: bash
+        run: |
+          if ! command -v pandoc >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends pandoc
+          fi
+          pandoc --version
+      - name: Verify citation preflight against actual Pandoc output
+        run: |
+          python -m unittest discover -s apps/research-program-workbench/monograph-composer/tests -v
       - name: Validate living Science sections and citation preservation
         run: |
           python -m unittest discover -s apps/research-program-workbench/tests -v
