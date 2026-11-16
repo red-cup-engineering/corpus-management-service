@@ -265,7 +265,10 @@ program-validator --root CURRENT --baseline-root ORIGINAL --no-lean --format jso
 
 The comparison reports added and resolved diagnostic occurrences by
 corpus-relative path, code, severity, message and details, independent of line
-movement. Repeated identical diagnostics remain separate occurrences. The
+movement. Repeated identical diagnostics remain separate occurrences. The comparison
+also lists changed validation inputs and indexed note paths that entered or
+left the checked corpus. A diagnostic disappearing because its source was no
+longer checked is not evidence of a repair. The
 normal diagnostics and hard-error exit code for CURRENT remain unchanged. This
 is evidence of diagnostic change, not a pass for an otherwise invalid corpus.
 Only use `--no-lean` when no formal proof is being qualified.

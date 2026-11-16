@@ -51,5 +51,22 @@ class CompareBaselineRootTest(unittest.TestCase):
             self.assertEqual(report["baseline"]["resolved"], [])
 
 
+    def test_removed_note_and_changed_scope_cannot_look_like_a_silent_repair(self):
+        with TemporaryDirectory() as tmp:
+            current, baseline = Path(tmp) / "current", Path(tmp) / "baseline"
+            self.write_terms(baseline, "[same](missing.md)")
+            self.write_terms(current, "[same](missing.md)")
+            (current / "research.toml").write_text('[corpus]\nlib_dirs = ["other"]\n')
+            (current / "other").mkdir()
+            _, report = self.run_comparison(current, baseline)
+            receipt = report["baseline"]
+            self.assertEqual(receipt["scope"]["removed_note_paths"], ["terms/care.md"])
+            self.assertEqual(receipt["scope"]["added_note_paths"], [])
+            self.assertEqual(receipt["scope"]["different_inputs"], ["lib_dirs", "min_body_chars"])
+            self.assertIn("missing.md", next(
+                x["message"] for x in receipt["resolved"] if x["code"] == "broken-link"
+            ))
+
+
 if __name__ == "__main__":
     unittest.main()

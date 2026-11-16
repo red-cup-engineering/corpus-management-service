@@ -93,6 +93,28 @@ def compare_diagnostics(
     }
 
 
+def compare_scope(current: Corpus, baseline: Corpus, *, run_lean: bool) -> dict:
+    """Distinguish diagnostics resolved by a repair from changes in coverage."""
+    def validation_inputs(corpus: Corpus) -> dict:
+        config = corpus.config
+        inputs = {
+            "lib_dirs": config.lib_dirs,
+            "bib": config.bib,
+            "min_body_chars": config.validate.min_body_chars,
+        }
+        if run_lean:
+            inputs["lean_dir"] = config.validate.lean_dir
+        return inputs
+
+    active, original = set(current.path_slugs), set(baseline.path_slugs)
+    a, b = validation_inputs(current), validation_inputs(baseline)
+    return {
+        "different_inputs": sorted(key for key in a if a[key] != b[key]),
+        "added_note_paths": sorted(active - original),
+        "removed_note_paths": sorted(original - active),
+    }
+
+
 def _summary(diagnostics: list[Diagnostic]) -> list[tuple[str, int]]:
     counts: dict[str, int] = {}
     for d in diagnostics:
@@ -141,6 +163,7 @@ def main(argv: list[str] | None = None) -> int:
             payload["baseline"] = {
                 "root": str(baseline_root),
                 "total_notes": len(baseline),
+                "scope": compare_scope(corpus, baseline, run_lean=not args.no_lean),
                 **compare_diagnostics(
                     diagnostics, root, collect(baseline, run_lean=not args.no_lean), baseline_root,
                 ),
