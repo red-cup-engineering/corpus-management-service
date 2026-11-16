@@ -342,3 +342,16 @@ line. Its details retain the exact destination and fragment, distinguish
 repository-relative path only for inside-root targets. These details are
 evidence for repair, not an inferred replacement. Neither a same-name file
 nor a guessed move proves the intended destination.
+
+
+### Qualify mathematical rendering
+
+Use the same local Pandoc tool as reader composition:
+
+    program-validator --root SCIENCE_CHECKOUT --no-lean --check-math --format json
+
+This optional check reports formulas for which Pandoc actually falls back
+from MathML. It does not mistake fenced code examples or unrelated renderer
+warnings for formulas. `--baseline-root` applies it to both checkouts.
+Ordinary validation works without Pandoc. Passing this check establishes
+renderability in the tested dialect, not correctness or formal proof.

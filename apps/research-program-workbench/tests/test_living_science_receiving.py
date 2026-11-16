@@ -129,3 +129,23 @@ This source records one observation, not a theorem.
                 self.assertEqual(row["extra"]["reason"], reason)
                 self.assertEqual(row["extra"]["expected_path"], expected)
             self.assertEqual(failures["ghost.md#observe"]["extra"]["fragment"], "observe")
+
+    def test_opt_in_math_check_reports_native_tex_fallback_not_code_examples(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.create_corpus(root)
+            note = root / TERM / "witnessing.md"
+            with note.open("a", encoding="utf-8") as file:
+                file.write("\nA formula: $a \\notacommand{b}$.\n\n~~~tex\n"
+                           "$\\exampleonly{a}$\n~~~\n")
+            self.assertEqual(self.run_validator(root)[0], 0)
+            output = StringIO()
+            with redirect_stdout(output):
+                status = validate(["--root", str(root), "--no-lean", "--format", "json",
+                                   "--check-math"])
+            self.assertEqual(status, 1)
+            reports = json.loads(output.getvalue())["diagnostics"]
+            tex = [row for row in reports if row["code"] == "tex-rendering"]
+            self.assertEqual(len(tex), 1, reports)
+            self.assertEqual(tex[0]["path"], f"{TERM}/witnessing.md")
+            self.assertEqual(tex[0]["extra"]["tex"], r"a \notacommand{b}")
