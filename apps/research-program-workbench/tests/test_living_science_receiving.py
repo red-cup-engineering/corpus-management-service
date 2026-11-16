@@ -149,3 +149,30 @@ This source records one observation, not a theorem.
             self.assertEqual(len(tex), 1, reports)
             self.assertEqual(tex[0]["path"], f"{TERM}/witnessing.md")
             self.assertEqual(tex[0]["extra"]["tex"], r"a \notacommand{b}")
+
+    def test_native_math_is_reused_only_for_identical_inputs_within_a_comparison(self):
+        from unittest.mock import patch
+        from research_corpus import pandoc
+
+        with TemporaryDirectory() as tmp:
+            current, baseline = Path(tmp) / "current", Path(tmp) / "baseline"
+            for root in (current, baseline):
+                self.create_corpus(root)
+                with (root / SOURCES / "witness.md").open("a") as source:
+                    source.write("\nA formula: $a \\notacommand{b}$.\n")
+            note = current / TERM / "witnessing.md"
+            with note.open("a") as source:
+                source.write("\nThe current wording is different.\n")
+            args = ["--root", str(current), "--baseline-root", str(baseline),
+                    "--format", "json", "--no-lean", "--check-math"]
+            for _ in range(2):
+                output = StringIO()
+                with patch.object(pandoc, "read_pandoc", wraps=pandoc.read_pandoc) as read:
+                    with redirect_stdout(output):
+                        self.assertEqual(validate(args), 1)
+                self.assertEqual(read.call_count, 3)
+                report = json.loads(output.getvalue())
+                self.assertFalse(report["baseline"]["added"])
+                self.assertFalse(report["baseline"]["resolved"])
+                tex = [x for x in report["diagnostics"] if x["code"] == "tex-rendering"]
+                self.assertEqual([v["path"] for v in tex], [f"{SOURCES}/witness.md"])

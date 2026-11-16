@@ -353,5 +353,8 @@ Use the same local Pandoc tool as reader composition:
 This optional check reports formulas for which Pandoc actually falls back
 from MathML. It does not mistake fenced code examples or unrelated renderer
 warnings for formulas. `--baseline-root` applies it to both checkouts.
+The same command can reuse an identical body from a bounded 256-entry
+cache while reporting findings at each owning path. It does not reuse
+evidence across separate invocations.
 Ordinary validation works without Pandoc. Passing this check establishes
 renderability in the tested dialect, not correctness or formal proof.

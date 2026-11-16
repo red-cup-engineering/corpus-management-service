@@ -45,14 +45,17 @@ DEFAULT_RULES = (
 )
 
 
-def collect(corpus: Corpus, *, run_lean: bool, check_math: bool = False) -> list[Diagnostic]:
+def collect(
+    corpus: Corpus, *, run_lean: bool, check_math: bool = False,
+    math_reader: math_rendering.TexReader = math_rendering.tex_fallbacks,
+) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = list(corpus.parse_errors)
     for rule in DEFAULT_RULES:
         diagnostics.extend(rule.check(corpus))
     if run_lean:
         diagnostics.extend(lean_rule.check(corpus))
     if check_math:
-        diagnostics.extend(math_rendering.check(corpus))
+        diagnostics.extend(math_rendering.check(corpus, read=math_reader))
     return diagnostics
 
 
@@ -156,7 +159,10 @@ def main(argv: list[str] | None = None) -> int:
     config = load_config(root)
     corpus = load(root=root, config=config)
 
-    diagnostics = collect(corpus, run_lean=not args.no_lean, check_math=args.check_math)
+    math_reader = (math_rendering.cached_reader() if args.check_math
+                   else math_rendering.tex_fallbacks)
+    diagnostics = collect(corpus, run_lean=not args.no_lean, check_math=args.check_math,
+                          math_reader=math_reader)
 
     if args.format == "json":
         payload = {
@@ -172,7 +178,8 @@ def main(argv: list[str] | None = None) -> int:
                 "scope": compare_scope(corpus, baseline, run_lean=not args.no_lean),
                 **compare_diagnostics(
                     diagnostics, root,
-                    collect(baseline, run_lean=not args.no_lean, check_math=args.check_math),
+                    collect(baseline, run_lean=not args.no_lean, check_math=args.check_math,
+                            math_reader=math_reader),
                     baseline_root,
                 ),
             }
