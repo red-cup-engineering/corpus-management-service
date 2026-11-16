@@ -11,7 +11,7 @@ from research_corpus.config import load_config
 from research_dagger import order_corpus
 
 from .ordering import assign_chapters
-from .pandoc import PandocError, ensure_pandoc, run as run_pandoc
+from .pandoc import PandocError, ensure_pandoc, run as run_pandoc, unresolved_citations
 from .render import (
     render_appendix_further_reading,
     render_appendix_questions,
@@ -24,13 +24,8 @@ from .render import (
 )
 
 
-def _generate_bib(corpus, build_dir: Path) -> Path | None:
-    """Generate a references.bib from the citation corpus into build_dir.
-
-    Returns the bib path on success, None when no references exist or when
-    research-citations is unavailable. Errors are surfaced to stderr but
-    don't abort the composer — the legacy bib path can take over.
-    """
+def _render_bibliography(corpus) -> tuple[str, int] | None:
+    """Prepare citation-corpus data; legacy fallback remains a separate selection."""
     try:
         from research_citations import load as load_citations
         from research_citations import render as render_bib
@@ -47,11 +42,7 @@ def _generate_bib(corpus, build_dir: Path) -> Path | None:
             print(f"  {i.code}: {i.key} ({i.source_path}): {i.message}",
                   file=sys.stderr)
         return None
-    bib_path = build_dir / "references.bib"
-    bib_path.write_text(render_bib(refs.values()))
-    print(f"composer: generated {bib_path} ({len(refs)} references)",
-          file=sys.stderr)
-    return bib_path
+    return render_bib(refs.values()), len(refs)
 
 
 def _yaml_preamble(title: str | None, subtitle: str | None,
@@ -127,7 +118,11 @@ def main(argv: list[str] | None = None) -> int:
                     help="print the linear order with chapter markers")
     ap.add_argument("--no-pandoc", action="store_true",
                     help="skip pandoc step; only emit composed.md and manifest.txt")
+    ap.add_argument("--require-resolved-citations", action="store_true",
+                    help="refuse reader output if Pandoc cannot resolve a citation from its selected .bib")
     args = ap.parse_args(argv)
+    if args.require_resolved_citations and args.no_pandoc:
+        ap.error("--require-resolved-citations cannot be combined with --no-pandoc")
 
     root = args.root.resolve() if args.root else find_root()
     config = load_config(root)
@@ -137,9 +132,6 @@ def main(argv: list[str] | None = None) -> int:
     build_dir = root / "tools" / "build"
     composed_path = build_dir / "composed.md"
     manifest_path = build_dir / "manifest.txt"
-    build_dir.mkdir(parents=True, exist_ok=True)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-
     if not args.no_pandoc:
         try:
             ensure_pandoc()
@@ -160,14 +152,13 @@ def main(argv: list[str] | None = None) -> int:
     for s in source_note_slugs(corpus):
         n = corpus[s]
         manifest_lines.append(f"R {n.dir}/{s}\t{n.kind}")
-    manifest_path.write_text("\n".join(manifest_lines) + "\n")
-
     # Generate a fresh references.bib from the citation corpus to a build-dir
     # location, replacing any hand-edited references.bib at the project root.
     # Falls back gracefully when research-citations is unavailable, or when
     # the project has neither annotation files nor inline `references:`.
-    generated_bib = _generate_bib(corpus, build_dir)
-    bib_target = generated_bib or (config.bib_path if config.bib_path.is_file() else None)
+    generated_bib = _render_bibliography(corpus)
+    bib_target = (build_dir / "references.bib" if generated_bib is not None
+                  else config.bib_path if config.bib_path.is_file() else None)
     bib_relpath = (os.path.relpath(bib_target, composed_path.parent)
                    if bib_target is not None else None)
     composed = build_composed(
@@ -176,6 +167,27 @@ def main(argv: list[str] | None = None) -> int:
         subtitle=config.compose.subtitle,
         bib_relpath=bib_relpath,
     )
+    if args.require_resolved_citations:
+        try:
+            if bib_target is not None and bib_target.suffix.lower() != ".bib":
+                raise PandocError("citation preflight requires a selected .bib bibliography")
+            bibliography = (generated_bib[0] if generated_bib is not None
+                            else bib_target.read_text(encoding="utf-8") if bib_target is not None else None)
+            missing = unresolved_citations(composed, bibliography)
+        except (OSError, UnicodeError, PandocError) as exc:
+            print(f"composer: {exc}", file=sys.stderr)
+            return 1
+        if missing:
+            for key in missing:
+                print(f"composer: unresolved citation: {key}", file=sys.stderr)
+            return 1
+
+    build_dir.mkdir(parents=True, exist_ok=True)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text("\n".join(manifest_lines) + "\n")
+    if generated_bib is not None:
+        bib_target.write_text(generated_bib[0], encoding="utf-8")
+        print(f"composer: generated {bib_target} ({generated_bib[1]} references)", file=sys.stderr)
     composed_path.write_text(composed)
 
     print(f"manifest:    {manifest_path}  ({len(manifest_lines)} entries)")
