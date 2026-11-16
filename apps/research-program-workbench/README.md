@@ -252,3 +252,42 @@ Original source repository and revision: `emsenn/emsenn-archive-code@3c69d5cf9d3
 The previously recovered two-package `research-program-dependency-auditor` subtree is preserved without byte changes as this correctly named workbench, then augmented with its original Python planning, citation, monograph and validator packages, plus the original `cite-tool` CLI. Do not duplicate the parser/auditor or the existing JS research-document metadata projections. The historical `program-validator` source is recovered with its structural rules intact. Its old source-text `sorry` hard-fail is deliberately corrected to a warning: frontier theorems are not a failure, and only the actual Obsmetrologia axiom census and proof-work-order gate can certify completed proof realization.
 
 This is Git source integration; any original `uv`/Pandoc run, installed consumer, and scientific qualification are separate evidence.
+
+
+### Compare a bounded corpus change
+
+Run the same validator and check profile on the current and original, separate
+checkouts:
+
+```sh
+program-validator --root CURRENT --baseline-root ORIGINAL --no-lean --format json
+```
+
+The comparison reports added and resolved diagnostic occurrences by
+corpus-relative path, code, severity, message and details, independent of line
+movement. Repeated identical diagnostics remain separate occurrences. The comparison
+also lists changed validation inputs and indexed note paths that entered or
+left the checked corpus. A diagnostic disappearing because its source was no
+longer checked is not evidence of a repair. The
+normal diagnostics and hard-error exit code for CURRENT remain unchanged. This
+is evidence of diagnostic change, not a pass for an otherwise invalid corpus.
+Only use `--no-lean` when no formal proof is being qualified.
+
+
+### Qualify the installed living Science workflow
+
+After installing the original workbench packages, run:
+
+```sh
+python -m unittest discover -s apps/research-program-workbench/tests -v
+```
+
+This checks what a living section actually receives: an enrolled source reaches
+the validator, the explicit vocabulary projection and the composed reader;
+an unenrolled homonym cannot satisfy a missing Markdown link; the original
+citation reader and CLI can receive a historical chapter manifest without
+losing fields, and a conflicting record cannot overwrite an existing
+bibliography. Each check exercises the original producer or consumer rather
+than checking code strings. These are bounded integration checks, separate
+from the provider-backed planner workflow and from qualification of a
+particular scientific corpus.
