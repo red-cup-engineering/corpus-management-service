@@ -332,3 +332,13 @@ slug, the composer uses its authored title at the existing reader wrapper.
 It does not emit that address twice or rename it. Different subsection IDs
 and literal code in the promoted note remain distinct. This does not rename
 arbitrary duplicate anchors elsewhere in the input.
+
+
+### Locate broken local Markdown links
+
+The validator's JSON reports each broken link at its one-based source file
+line. Its details retain the exact destination and fragment, distinguish
+`missing`, `not-a-file` and `outside-root`, and expose the normalized
+repository-relative path only for inside-root targets. These details are
+evidence for repair, not an inferred replacement. Neither a same-name file
+nor a guessed move proves the intended destination.

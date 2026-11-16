@@ -6,7 +6,7 @@ from pathlib import Path
 from .citations import parse_bib_keys
 from .config import ProgramConfig, load_config
 from .diagnostics import Diagnostic
-from .frontmatter import FrontmatterError, parse_file
+from .frontmatter import FrontmatterError, parse_file_with_body_line
 
 
 @dataclass
@@ -17,6 +17,7 @@ class Note:
     fm: dict
     body: str
     path: Path  # path relative to corpus root
+    body_start_line: int = 1
 
     # Legacy dict-style access — the original tools indexed notes as dicts;
     # the validator/composer ports keep that idiom for line-by-line parity.
@@ -100,7 +101,7 @@ def load(root: Path | None = None, *, config: ProgramConfig | None = None) -> Co
                 continue
             rel = p.relative_to(root)
             try:
-                fm, body = parse_file(p)
+                fm, body, body_start_line = parse_file_with_body_line(p)
             except FrontmatterError as e:
                 parse_errors.append(Diagnostic(
                     code="frontmatter-parse",
@@ -142,6 +143,7 @@ def load(root: Path | None = None, *, config: ProgramConfig | None = None) -> Co
                 fm=fm,
                 body=body,
                 path=rel,
+                body_start_line=body_start_line,
             )
 
     bib_keys = parse_bib_keys(config.bib_path)

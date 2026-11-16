@@ -103,3 +103,29 @@ This source records one observation, not a theorem.
             self.assertEqual(len(errors), 1)
             self.assertEqual(errors[0]["path"], f"{TERM}/witnessing.md")
             self.assertIn("missing/witness.md", errors[0]["message"])
+
+    def test_link_diagnostics_identify_source_lines_and_typed_target_reasons(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.create_corpus(root)
+            note = root / TERM / "witnessing.md"
+            with note.open("a", encoding="utf-8") as file:
+                file.write("\n[Missing](ghost.md#observe)\n[Folder](subdir/folder.md)\n"
+                           "[External path](../../../../../outside.md)\n")
+            (note.parent / "subdir/folder.md").mkdir(parents=True)
+            status, report = self.run_validator(root)
+            self.assertEqual(status, 1)
+            failures = {row["extra"]["target"]: row for row in report["diagnostics"]
+                        if row["code"] == "broken-link"}
+            self.assertEqual(set(failures), {"ghost.md#observe", "subdir/folder.md", "../../../../../outside.md"})
+            source_lines = note.read_text().splitlines()
+            for target, reason, expected in (
+                ("ghost.md#observe", "missing", f"{TERM}/ghost.md"),
+                ("subdir/folder.md", "not-a-file", f"{TERM}/subdir/folder.md"),
+                ("../../../../../outside.md", "outside-root", None),
+            ):
+                row = failures[target]
+                self.assertIn(target, source_lines[row["line"] - 1])
+                self.assertEqual(row["extra"]["reason"], reason)
+                self.assertEqual(row["extra"]["expected_path"], expected)
+            self.assertEqual(failures["ghost.md#observe"]["extra"]["fragment"], "observe")
