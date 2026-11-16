@@ -299,7 +299,20 @@ particular scientific corpus.
 monograph-composer --root SCIENCE_CHECKOUT --out build/reader.md --require-resolved-citations
 ```
 
-The option asks the original Pandoc reader which citation identifiers it
+A section can require this for ordinary reader builds in its own
+`research.toml`:
+
+```toml
+[compose]
+require_resolved_citations = true
+```
+
+This setting is off unless the section opts in. `--no-pandoc` still emits
+only intermediate Markdown and a manifest, not the final reader, and does
+not certify those intermediates against Pandoc. If the command-line
+requirement is set explicitly, it cannot be combined with `--no-pandoc`.
+
+The policy asks the original Pandoc reader which citation identifiers it
 actually sees, then checks the exact bibliography selected by the composer.
 Native grouped, suppressed-author, and braced keys keep their case and
 punctuation; examples in code are not citations. The normal bibliography
