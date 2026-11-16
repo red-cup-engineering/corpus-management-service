@@ -71,3 +71,35 @@ Two visible keys [@generated; @Case_With_Underscore; @case_with_underscore].
             self.assertNotIn("unresolved citation: generated", error)
             self.assertEqual(reader.read_bytes(), b"Previously received reader\n")
             self.assertFalse((root / "tools/build/references.bib").exists())
+
+    def test_source_policy_checks_normal_render_but_not_intermediate_composition(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            note = self.create_corpus(root)
+            with (root / "research.toml").open("a") as config:
+                config.write("\n[compose]\nrequire_resolved_citations = true\n")
+            note.write_text("---\nname: Source policy\ntype: term\n---\n\nCitation [@Unresolved_Source].\n")
+            reader = root / "reader.md"
+            reader.write_text("Previously received reader\n")
+            opts = ["--root", str(root), "--out", str(reader)]
+            error = StringIO()
+            with redirect_stdout(StringIO()), redirect_stderr(error):
+                self.assertEqual(main(opts), 1)
+            self.assertIn("unresolved citation: Unresolved_Source", error.getvalue())
+            self.assertEqual(reader.read_text(), "Previously received reader\n")
+            self.assertFalse((root / "tools/build/manifest.txt").exists())
+            with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+                self.assertEqual(main([*opts, "--no-pandoc"]), 0)
+            self.assertEqual(reader.read_text(), "Previously received reader\n")
+            self.assertTrue((root / "tools/build/manifest.txt").exists())
+
+    def test_citation_policy_is_a_toml_boolean(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.create_corpus(root)
+            with (root / "research.toml").open("a") as config:
+                config.write('\n[compose]\nrequire_resolved_citations = "false"\n')
+            from research_corpus.config import load_config
+
+            with self.assertRaisesRegex(ValueError, "compose.require_resolved_citations must be a boolean"):
+                load_config(root)

@@ -23,6 +23,7 @@ class ComposeConfig:
     output: str = "tools/build/monograph.md"
     title: str | None = None
     subtitle: str | None = None
+    require_resolved_citations: bool = False
 
 
 @dataclass
@@ -115,6 +116,9 @@ def load_config(root: Path) -> ProgramConfig:
     plan = data.get("plan", {}) or {}
     audit = data.get("audit", {}) or {}
     program = data.get("program", {}) or {}
+    require_resolved_citations = compose.get("require_resolved_citations", False)
+    if not isinstance(require_resolved_citations, bool):
+        raise ValueError("compose.require_resolved_citations must be a boolean")
 
     return ProgramConfig(
         root=root,
@@ -128,6 +132,7 @@ def load_config(root: Path) -> ProgramConfig:
             output=compose.get("output", "tools/build/monograph.md"),
             title=program.get("title") or compose.get("title"),
             subtitle=program.get("subtitle") or compose.get("subtitle"),
+            require_resolved_citations=require_resolved_citations,
         ),
         plan=PlanConfig(
             output=plan.get("output", "tools/build/research-program.md"),

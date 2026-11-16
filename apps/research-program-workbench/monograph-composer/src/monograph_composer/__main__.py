@@ -167,7 +167,10 @@ def main(argv: list[str] | None = None) -> int:
         subtitle=config.compose.subtitle,
         bib_relpath=bib_relpath,
     )
-    if args.require_resolved_citations:
+    check_citations = not args.no_pandoc and (
+        args.require_resolved_citations or config.compose.require_resolved_citations
+    )
+    if check_citations:
         try:
             if bib_target is not None and bib_target.suffix.lower() != ".bib":
                 raise PandocError("citation preflight requires a selected .bib bibliography")
