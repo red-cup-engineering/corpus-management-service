@@ -16,11 +16,20 @@ def check(corpus: Corpus) -> Iterator[Diagnostic]:
     for note in corpus:
         for link in find_markdown_links(note.body):
             destination = (root / note.path.parent / link.path).resolve()
-            if not destination.is_relative_to(root) or not destination.is_file():
-                yield Diagnostic(
-                    code="broken-link",
-                    severity="error",
-                    path=note.path,
-                    message=f"relative Markdown target `{link.target}` is missing or outside the selected root",
-                    extra={"slug": note.slug, "target": link.target},
-                )
+            inside = destination.is_relative_to(root)
+            if inside and destination.is_file():
+                continue
+            reason = ("outside-root" if not inside else
+                      "not-a-file" if destination.exists() else "missing")
+            yield Diagnostic(
+                code="broken-link",
+                severity="error",
+                path=note.path,
+                line=note.body_start_line + note.body.count("\n", 0, link.start),
+                message=f"relative Markdown target `{link.target}` is missing or outside the selected root",
+                extra={
+                    "slug": note.slug, "target": link.target, "fragment": link.fragment,
+                    "reason": reason,
+                    "expected_path": destination.relative_to(root).as_posix() if inside else None,
+                },
+            )
