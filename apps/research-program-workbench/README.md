@@ -272,3 +272,22 @@ longer checked is not evidence of a repair. The
 normal diagnostics and hard-error exit code for CURRENT remain unchanged. This
 is evidence of diagnostic change, not a pass for an otherwise invalid corpus.
 Only use `--no-lean` when no formal proof is being qualified.
+
+
+### Qualify the installed living Science workflow
+
+After installing the original workbench packages, run:
+
+```sh
+python -m unittest discover -s apps/research-program-workbench/tests -v
+```
+
+This checks what a living section actually receives: an enrolled source reaches
+the validator, the explicit vocabulary projection and the composed reader;
+an unenrolled homonym cannot satisfy a missing Markdown link; the original
+citation reader and CLI can receive a historical chapter manifest without
+losing fields, and a conflicting record cannot overwrite an existing
+bibliography. Each check exercises the original producer or consumer rather
+than checking code strings. These are bounded integration checks, separate
+from the provider-backed planner workflow and from qualification of a
+particular scientific corpus.
