@@ -252,3 +252,20 @@ Original source repository and revision: `emsenn/emsenn-archive-code@3c69d5cf9d3
 The previously recovered two-package `research-program-dependency-auditor` subtree is preserved without byte changes as this correctly named workbench, then augmented with its original Python planning, citation, monograph and validator packages, plus the original `cite-tool` CLI. Do not duplicate the parser/auditor or the existing JS research-document metadata projections. The historical `program-validator` source is recovered with its structural rules intact. Its old source-text `sorry` hard-fail is deliberately corrected to a warning: frontier theorems are not a failure, and only the actual Obsmetrologia axiom census and proof-work-order gate can certify completed proof realization.
 
 This is Git source integration; any original `uv`/Pandoc run, installed consumer, and scientific qualification are separate evidence.
+
+
+### Compare a bounded corpus change
+
+Run the same validator and check profile on the current and original, separate
+checkouts:
+
+```sh
+program-validator --root CURRENT --baseline-root ORIGINAL --no-lean --format json
+```
+
+The comparison reports added and resolved diagnostic occurrences by
+corpus-relative path, code, severity, message and details, independent of line
+movement. Repeated identical diagnostics remain separate occurrences. The
+normal diagnostics and hard-error exit code for CURRENT remain unchanged. This
+is evidence of diagnostic change, not a pass for an otherwise invalid corpus.
+Only use `--no-lean` when no formal proof is being qualified.

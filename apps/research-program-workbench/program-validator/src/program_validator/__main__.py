@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import json
 import sys
 from pathlib import Path
@@ -62,6 +63,36 @@ def _diagnostic_to_jsonable(d: Diagnostic) -> dict:
     }
 
 
+def compare_diagnostics(
+    current: list[Diagnostic], current_root: Path,
+    baseline: list[Diagnostic], baseline_root: Path,
+) -> dict[str, list[dict]]:
+    """Compare diagnostic occurrences, not checkout paths or moved line numbers."""
+    def indexed(rows: list[Diagnostic], root: Path) -> tuple[Counter, dict]:
+        counts, examples = Counter(), {}
+        for diagnostic in rows:
+            row = _diagnostic_to_jsonable(diagnostic)
+            if diagnostic.path is not None:
+                path = diagnostic.path
+                if path.is_absolute() and path.is_relative_to(root):
+                    path = path.relative_to(root)
+                row["path"] = path.as_posix()
+            identity = {key: value for key, value in row.items() if key != "line"}
+            fingerprint = json.dumps(identity, sort_keys=True, ensure_ascii=False)
+            counts[fingerprint] += 1
+            examples[fingerprint] = row
+        return counts, examples
+
+    present, current_rows = indexed(current, current_root)
+    before, old_rows = indexed(baseline, baseline_root)
+    return {
+        "added": [current_rows[key] for key in sorted(present - before)
+                  for _ in range(present[key] - before[key])],
+        "resolved": [old_rows[key] for key in sorted(before - present)
+                     for _ in range(before[key] - present[key])],
+    }
+
+
 def _summary(diagnostics: list[Diagnostic]) -> list[tuple[str, int]]:
     counts: dict[str, int] = {}
     for d in diagnostics:
@@ -81,9 +112,19 @@ def main(argv: list[str] | None = None) -> int:
                     help="write the markdown report here (default: <root>/tools/build/wip-report.md)")
     ap.add_argument("--quiet", action="store_true",
                     help="suppress per-code summary on stderr")
+    ap.add_argument("--baseline-root", type=Path, default=None,
+                    help="append a diagnostic comparison against another corpus root to JSON")
     args = ap.parse_args(argv)
+    if args.baseline_root is not None and (args.format != "json" or args.report is not None):
+        ap.error("--baseline-root requires --format json without --report")
 
     root = args.root.resolve() if args.root else find_root()
+    baseline_root = args.baseline_root.resolve() if args.baseline_root is not None else None
+    if baseline_root is not None:
+        if not root.is_dir() or not baseline_root.is_dir():
+            ap.error("both comparison roots must be existing directories")
+        if baseline_root == root:
+            ap.error("--baseline-root must be a separate corpus checkout")
     config = load_config(root)
     corpus = load(root=root, config=config)
 
@@ -95,6 +136,15 @@ def main(argv: list[str] | None = None) -> int:
             "total_notes": len(corpus),
             "diagnostics": [_diagnostic_to_jsonable(d) for d in diagnostics],
         }
+        if baseline_root is not None:
+            baseline = load(root=baseline_root, config=load_config(baseline_root))
+            payload["baseline"] = {
+                "root": str(baseline_root),
+                "total_notes": len(baseline),
+                **compare_diagnostics(
+                    diagnostics, root, collect(baseline, run_lean=not args.no_lean), baseline_root,
+                ),
+            }
         print(json.dumps(payload, indent=2))
     else:
         report_path = args.report or (root / "tools" / "build" / "wip-report.md")
