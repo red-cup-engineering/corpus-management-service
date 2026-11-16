@@ -1,32 +1,16 @@
 """Pandoc invocation: citeproc expansion of [@key] citations against a bib."""
 from __future__ import annotations
 
-import json
 import subprocess
 from pathlib import Path
 
 
-MARKDOWN_READER = "markdown-auto_identifiers"
-
-
-class PandocError(RuntimeError):
-    pass
+from research_corpus.pandoc import MARKDOWN_READER, PandocError, read_pandoc_json
 
 
 def ensure_pandoc() -> None:
     if subprocess.run(["which", "pandoc"], capture_output=True).returncode != 0:
         raise PandocError("pandoc not found on PATH (try: apt install pandoc)")
-
-
-def _parsed_json(text: str, source: str, target: str):
-    try:
-        result = subprocess.run(
-            ["pandoc", "--sandbox", "--from", source, "--to", target],
-            input=text, encoding="utf-8", capture_output=True, timeout=30, check=True,
-        )
-        return json.loads(result.stdout)
-    except (OSError, ValueError, subprocess.SubprocessError) as exc:
-        raise PandocError(f"could not parse citation input as {source}: {exc}") from exc
 
 
 def _citation_ids(document) -> set[str]:
@@ -46,12 +30,12 @@ def _citation_ids(document) -> set[str]:
 
 def unresolved_citations(composed: str, bibliography: str | None) -> tuple[str, ...]:
     """Use the rendering engine's Markdown and BibLaTeX readers, not key guesses."""
-    requested = _citation_ids(_parsed_json(composed, MARKDOWN_READER, "json"))
+    requested = _citation_ids(read_pandoc_json(composed, MARKDOWN_READER, "json"))
     if not requested:
         return ()
     available = set()
     if bibliography is not None:
-        records = _parsed_json(bibliography, "biblatex", "csljson")
+        records = read_pandoc_json(bibliography, "biblatex", "csljson")
         available = {record["id"] for record in records}
     return tuple(sorted(requested - available))
 

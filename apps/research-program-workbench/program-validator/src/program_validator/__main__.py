@@ -11,7 +11,7 @@ from research_corpus.config import load_config
 
 from .rules import (
     bib, citations, coverage, cross_refs, cycles, lean as lean_rule, orphans,
-    proofs, status_consistency, stubs, symbols,
+    math_rendering, proofs, status_consistency, stubs, symbols,
 )
 from .report import render
 
@@ -35,6 +35,8 @@ HARD_CODES = {
     "lean-build-failed",
     "lean-lemma-missing",
     "lean-module-missing",
+    "tex-rendering",
+    "tex-check-unavailable",
 }
 
 DEFAULT_RULES = (
@@ -43,12 +45,14 @@ DEFAULT_RULES = (
 )
 
 
-def collect(corpus: Corpus, *, run_lean: bool) -> list[Diagnostic]:
+def collect(corpus: Corpus, *, run_lean: bool, check_math: bool = False) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = list(corpus.parse_errors)
     for rule in DEFAULT_RULES:
         diagnostics.extend(rule.check(corpus))
     if run_lean:
         diagnostics.extend(lean_rule.check(corpus))
+    if check_math:
+        diagnostics.extend(math_rendering.check(corpus))
     return diagnostics
 
 
@@ -128,6 +132,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="research program root (default: walk up from CWD)")
     ap.add_argument("--no-lean", action="store_true",
                     help="skip Lean proof validation")
+    ap.add_argument("--check-math", action="store_true",
+                    help="verify rendered TeX with local Pandoc MathML output")
     ap.add_argument("--format", choices=("md", "json"), default="md",
                     help="report format written to stdout when --report is omitted")
     ap.add_argument("--report", type=Path, default=None,
@@ -150,7 +156,7 @@ def main(argv: list[str] | None = None) -> int:
     config = load_config(root)
     corpus = load(root=root, config=config)
 
-    diagnostics = collect(corpus, run_lean=not args.no_lean)
+    diagnostics = collect(corpus, run_lean=not args.no_lean, check_math=args.check_math)
 
     if args.format == "json":
         payload = {
@@ -165,7 +171,9 @@ def main(argv: list[str] | None = None) -> int:
                 "total_notes": len(baseline),
                 "scope": compare_scope(corpus, baseline, run_lean=not args.no_lean),
                 **compare_diagnostics(
-                    diagnostics, root, collect(baseline, run_lean=not args.no_lean), baseline_root,
+                    diagnostics, root,
+                    collect(baseline, run_lean=not args.no_lean, check_math=args.check_math),
+                    baseline_root,
                 ),
             }
         print(json.dumps(payload, indent=2))
