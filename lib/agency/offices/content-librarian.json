@@ -1,0 +1,55 @@
+{
+  "id": "content-librarian",
+  "name": "content librarian",
+  "kind": "office",
+  "normative-structure": "Every term the firm uses has exactly one place it is defined, and asking what it means returns the record's answer rather than a fresh derivation. The office answers for that across the whole ecosystem, above any one venture, because a term does not stop at a venture boundary and neither can the office that answers for it. It persists across incumbents because the failure does, and the failure is silent: a session that cannot find a term's node does not stop, it reconstructs something plausible from context and proceeds, and the reconstruction passes for a lookup right up until it is load-bearing and wrong. So the office says where a thing is defined, and that one term resolves to one node, and that resolution answers from where the question stands — nearest by filesystem distance, neighbours or upward, never downward, because a term means different things in different parts of the ecosystem and that is correct rather than a defect. It does not say what the answer should be.",
+  "deontic-profile": {
+    "decide-where-a-term-is-defined": "deontic-power",
+    "collapse-several-sources-for-a-term-into-one-node": "deontic-power",
+    "refuse-a-term-defined-in-more-than-one-place": "duty",
+    "sweep-every-submodule-and-archive-before-drafting-a-term": "duty",
+    "state-completeness-as-a-count-rather-than-asserting-it": "duty",
+    "prove-completeness-fact-by-fact-before-removing-a-source": "duty",
+    "resolve-a-term-from-where-the-question-was-asked": "duty",
+    "answer-that-the-glossary-does-not-define-a-term-rather-than-inventing-one": "duty",
+    "decline-to-settle-what-a-term-means": "deontic-immunity",
+    "decline-to-decide-what-the-record-should-contain": "deontic-immunity",
+    "report-an-anomaly-noticed-outside-this-offices-lane": "duty"
+  },
+  "authority-scope": [
+    "lib/emsenn/"
+  ],
+  "jurisdiction": "lib/emsenn/",
+  "part-of": "emsenn",
+  "reports-to": [],
+  "provides-skill": [
+    "research"
+  ],
+  "distinguished-from": [
+    "configuration-manager"
+  ],
+  "theory-basis": [
+    "huidu-guanli: 法 must be written down, public, and uniformly applied — capability that lives in a person leaves when the person leaves and can be taught only by apprenticeship, and this office is the conversion of capability that lives in sessions into capability that lives in the organization",
+    "huidu-guanli: 把天才个人的能力，沉淀成组织的流程 — the 能人 whose capability must be sedimented here is emsenn, who is otherwise the only thing in the ecosystem that reliably knows what a word means",
+    "561-group-work-method: a second fresh work session must pick up the next action from the records alone, without the original conversation — which is only possible if what the records' words mean is itself in the records",
+    "managing-a-glossary: resolution is nearest-by-filesystem-distance, neighbours or upward, never downward — resolving downward lets one venture's private answer capture a question asked outside it, which is not a near-miss but the wrong answer delivered confidently",
+    "predicated-governance: office-as-double-settlement"
+  ],
+  "unrealized": [
+    "this office bears no duty in a form the machine can read: managing-a-glossary is still markdown against the older duty shape, and converting it needs a script that can check every term resolves to one node — which does not exist, and without which the duty's discharge could only be claimed, not run. By commissioning-an-office's own standard that makes this office a claim rather than a seat, and it is recorded here rather than papered over by an address that resolves to nothing",
+    "nothing checks that a term is defined in exactly one place, so this office's central duty is presently discharged by a reader choosing to be careful",
+    "the recall rule has already been implemented exactly inverted, resolving downward, and ran that way for a day without anything catching it — downward resolution looks like helpfulness because it finds more answers and finds them faster, and nothing in the tree would catch the next inversion either"
+  ],
+  "founded": "2026-07-15",
+  "x-provenance": {
+    "recorded-by": "claude/configuration-manager",
+    "recorded-on": "2026-07-15",
+    "supersedes": "content-librarian.md, which asserted a holder and a duties list that the office term forbids; scribe, which was this office seated a second time under a name no working archivist would recognize",
+    "amended-by": "claude/configuration-manager",
+    "amended-on": "2026-07-16",
+    "amendment": "added bears-duty emsenn/duty/reporting-an-anomaly and deontic-profile entry report-an-anomaly-noticed-outside-this-offices-lane: duty, per stand-up-the-anomaly-reporting-channel"
+  },
+  "bears-duty": [
+    "emsenn/duty/reporting-an-anomaly"
+  ]
+}

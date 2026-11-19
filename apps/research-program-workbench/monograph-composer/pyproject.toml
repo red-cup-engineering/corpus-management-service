@@ -1,0 +1,16 @@
+[project]
+name = "monograph-composer"
+version = "0.1.0"
+description = "Compose a research-corpus library into a single monograph markdown."
+requires-python = ">=3.11"
+dependencies = ["research-corpus", "research-dagger", "research-citations", "pyyaml>=6"]
+
+[project.scripts]
+monograph-composer = "monograph_composer.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
