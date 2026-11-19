@@ -9,7 +9,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve, relative, basename, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyzeForms } from "./lib/knowledge-forms.mjs";
-import { requestCoordinationReadout } from "./lib/coordination-readout.mjs";
+import { requestCoordinationReport } from "./lib/coordination-readout.mjs";
 import { createEvidenceJournal } from "@red-cup-engineering/semantic-record-journal-service";
 import { EMPTY_WITNESS_ROOT, identifyJsonSemanticContent } from "@red-cup-engineering/computer-code-engine/semiotic-expression-notation/semantic-content-identity";
 import { CORPUS_KNOWLEDGE_CONTRACT } from "./law.mjs";
@@ -160,7 +160,7 @@ function recognizeTerritory(root, material, terms) {
   return Object.freeze({ proposalId: identifyJsonSemanticContent({ objectKind: "corpus-management.territory-recognition-proposal", value: proposalBody, witnessRoot: EMPTY_WITNESS_ROOT }).id, ...proposalBody });
 }
 
-function formationLeadCandidate(recognition, instant) {
+function creationLeadCandidate(recognition, instant) {
   const requiredCapabilities = [...new Set(recognition.candidates.map((candidate) => candidate.nextCapability))];
   const body = {
     type: "FounderEnterpriseFormationMarketLeadCandidate", supplier: ACTOR, sourceActivity: recognition.proposalId,
@@ -285,7 +285,7 @@ if (!root || !existsSync(root) || !statSync(root).isDirectory()) {
       const material = observedMaterial(entry.root, bounded.files);
       const territoryRecognition = recognizeTerritory(entry.root, material, []);
       return Object.freeze({ type: "DiscoveredInformationalTerritory", territory: entry.root, kind: entry.kind, markers: entry.markers,
-        material, territoryRecognition, formationLeadCandidate: formationLeadCandidate(territoryRecognition, instant),
+        material, territoryRecognition, formationLeadCandidate: creationLeadCandidate(territoryRecognition, instant),
         observation: { fileCount: bounded.files.length, truncated: bounded.truncated }, observedAt: instant });
     });
     const result = { type: "FirmTerritoryDiscoveryResult", root: resolve(root), scannedAt: instant, territoryCount: territories.length,
@@ -300,10 +300,10 @@ if (!root || !existsSync(root) || !statSync(root).isDirectory()) {
   const { forms, groupSummaries } = assembleForms(bySlug, resolve(root));
   const issues = analyzeForms(forms);
   const ambiguousGroups = groupSummaries.filter((g) => g.ambiguous).length;
-  const coordination = await requestCoordinationReadout(groupSummaries);
+  const coordination = await requestCoordinationReport(groupSummaries);
   const material = observedMaterial(resolve(root), files);
   const territoryRecognition = recognizeTerritory(resolve(root), material, terms);
-  const lead = formationLeadCandidate(territoryRecognition, instant);
+  const lead = creationLeadCandidate(territoryRecognition, instant);
   const result = {
     type: "FirmCorpusSweepResult",
     root: resolve(root),

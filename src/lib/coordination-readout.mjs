@@ -3,7 +3,7 @@ import { requestRelationalGraphReadout } from "@lenticule-science/mathematical-r
 
 const compareText = (left, right) => left < right ? -1 : left > right ? 1 : 0;
 
-export const DEFAULT_READOUT_AGENT_URL = process.env.CORPUS_MATHEMATICAL_READOUT_AGENT_URL
+export const DEFAULT_REPORT_AGENT_URL = process.env.CORPUS_MATHEMATICAL_READOUT_AGENT_URL
   ?? "https://bare-cedar-fog.561.group/a2a/mathematical-readout-exchange/.well-known/agent-card.json";
 
 export function normalizedCoordinationGraph(groupSummaries) {
@@ -26,9 +26,9 @@ export function normalizedCoordinationGraph(groupSummaries) {
   });
 }
 
-export function requestCoordinationReadout(
+export function requestCoordinationReport(
   groupSummaries,
-  { agentUrl = DEFAULT_READOUT_AGENT_URL, request = requestRelationalGraphReadout } = {},
+  { agentUrl = DEFAULT_REPORT_AGENT_URL, request = requestRelationalGraphReadout } = {},
 ) {
   return request({ agentUrl, graph: normalizedCoordinationGraph(groupSummaries) });
 }

@@ -30,8 +30,8 @@ function inputValue() {
 }
 
 function store() {
-  const journal = createEvidenceJournal({ root: NODE_ROOT, objectKind: "corpus-management.record" });
-  return { record: ({ category, recordedAt, record }) => journal.record({ category, recordedAt, record, charge: { support: true, refutation: false }, ...(category.endsWith(".eavt") ? { relation: { subject: record.e, predicate: record.a, object: record.v } } : {}) }) };
+  const log = createEvidenceJournal({ root: NODE_ROOT, objectKind: "corpus-management.record" });
+  return { record: ({ category, recordedAt, record }) => log.record({ category, recordedAt, record, charge: { support: true, refutation: false }, ...(category.endsWith(".eavt") ? { relation: { subject: record.e, predicate: record.a, object: record.v } } : {}) }) };
 }
 async function witness(activity, outcome, instant, stageIds = []) {
   const provider = store();
