@@ -13,6 +13,8 @@ The initial recoveries preserved the original Python implementations and individ
 - `cite-tool`: the original command-line check, list and `references.bib` generation operations using that same citations library
 - `monograph-composer`: section/part/chapter ordering, stable anchors, optional bibliography and Pandoc citeproc composition
 
+The [authenticated glossary dataset build](glossary-dataset/README.md) also uses this Workbench's source-authored vocabulary evidence. It composes the existing Git, Markdown, Term, and RDF providers and requires the receiving Science section's SHACL and named-graph ASK checks before emitting a dataset.
+
 ## Existing CLI and import contracts
 
 Use an existing mathematical research program with `research.toml`. The original entrypoints still select `--root` explicitly and do not need a second source registry:

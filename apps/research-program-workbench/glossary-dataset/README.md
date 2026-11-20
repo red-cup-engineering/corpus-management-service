@@ -1,0 +1,68 @@
+# Authenticated Science glossary dataset
+
+Build the exact reviewed vocabulary, glossary documents, observed navigation,
+and authored assertions as separate named RDF graphs. This Workbench
+application uses the Science repository's data-only build profile, not a
+catalog of special cases in code. It never treats a hyperlink as a scientific
+claim or classifies all glossary notes as reviewed concepts.
+
+## Runtime and inputs
+
+- Node 24 and native Git. This operation reads an **already available, exact
+  local SHA-1 commit**. It does not change the checkout, resolve a branch in
+  place of the requested commit, fetch missing objects, or ask for credentials.
+- Exact Git Engine 0.1.10, Term 0.3.8 and Triplet 0.2.9 artifacts. The package
+  manifest fixes these direct inputs. Pass the actual resolved cohort through
+  your established package acquisition process.
+- Markdown **0.6.0-dev.0**, from [merged source
+  9e69aa58](https://github.com/red-cup-engineering/markdown-engineering-services-section/tree/9e69aa588317cae2c505c097ee0ce32180f6000c)
+  ([Markdown #62](https://github.com/red-cup-engineering/markdown-engineering-services-section/pull/62)).
+  This source build has not been established as a clean registry receiving
+  path. Acquire its exact package through the original Markdown owner; do not
+  silently substitute issued 0.5.13. A changed observer version
+  needs to be qualified against the receiving corpus before adoption.
+- One Python 3.12+ environment with the original [Research
+  Corpus](https://github.com/red-cup-engineering/corpus-management-service/tree/0cea49d462f17b7b73bde380cc36d3a2c5a79d8e/apps/research-program-workbench/research-corpus)
+  (the authored-relations profile command), the original [RDF
+  Conformance](https://github.com/red-cup-engineering/rdf-vocabulary-conformance-service/tree/25d5c2432aa38ada297acfae3dcdc49aac6aedab)
+  (dataset.ask and dataset.shacl), and its pinned RDFLib. Build and install
+  these from the cited source revisions where issued artifacts are not
+  available. The renderer uses the owner programs rather than reopening their
+  admission logic in JavaScript.
+
+The Science profile must itself exist as a regular file at the input commit.
+It selects the canonical content/text/glossary catalog (including README
+navigation), original Turtle, authored relation profile, and dataset
+conformance config. That commit supplies every selected glossary blob,
+research.toml, the exact shapes, and the exact ASK query. The Workbench
+uses original frontmatter authority; Term's closed Engineering schema decides
+carrier admission independently. Reviewed assertions must match visible
+original document bytes and both reviewed SKOS endpoint bindings. No ad hoc
+command-line predicate or unpinned inventory is accepted.
+
+## Run
+
+From this directory, after materializing the exact runtime:
+
+    npm test
+    npm run project -- \
+      --repository /absolute/path/to/science-repository \
+      --revision <full-immutable-source-commit> \
+      --profile data/schema/glossary-build.json \
+      --audience authenticated \
+      --python /absolute/path/to/python-environment/bin/python \
+      --output /absolute/existing/private-parent/new-output-directory
+
+For an already qualified revision, compare both full output SHA-256 and graph
+membership. A later commit can preserve the content tree yet intentionally
+change source addresses and observation identities: do not treat those
+different source pins as byte-identical. This output is private, not a
+publication or validation of the scientific claims.
+
+A successful build materializes only the canonical N-Quads at the path named
+by the Science acceptance config, coverage.json, the independent
+acceptance.json, and a source.json Git/blob and SHA-256 receipt under a
+new directory outside the source. Each file is private. Missing inputs or
+failed SHACL or ASK leave no promoted output. SHACL checks the dataset's
+union for shape rules; ASK separately checks assertion placement. No
+inference, external traversal, or fragment-existence claim is made.
