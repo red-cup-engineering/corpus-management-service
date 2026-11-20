@@ -358,3 +358,23 @@ cache while reporting findings at each owning path. It does not reuse
 evidence across separate invocations.
 Ordinary validation works without Pandoc. Passing this check establishes
 renderability in the tested dialect, not correctness or formal proof.
+
+### Read Science's authored glossary relations
+
+A Science owner can opt in to a frontmatter property whose scalar value names
+an exact reviewed member:
+
+~~~toml
+[vocabulary.authored_relations]
+codomain-concept = "urn:example:vocabulary:codomainConcept"
+~~~
+
+`research-vocabulary --root /path/to/section --authored-relations --audience authenticated`
+prints JSON evidence for the declared properties without rewriting the reviewed
+Turtle. The two document addresses and exact authored field/value travel with
+each assertion. Both endpoints must be in the explicit reviewed selection and
+pass their audience checks; public requires an explicit opt-in, and consent
+metadata holds an entry out. A hyperlink, label, or alias does not add an
+assertion. Unresolved declared values produce a nonzero verdict. The caller
+still binds source bytes to an immutable revision before graph publication or
+receiving, and the result does not prove the underlying scientific proposition.
