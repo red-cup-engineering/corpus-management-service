@@ -1,7 +1,8 @@
+import { compareText } from "@red-cup-engineering/semiotic-content-address-system";
 import { dirname } from "node:path";
 import { requestRelationalGraphReadout } from "@lenticule-science/mathematical-readout-exchange/client";
 
-const compareText = (left, right) => left < right ? -1 : left > right ? 1 : 0;
+
 
 export const DEFAULT_READOUT_AGENT_URL = process.env.CORPUS_MATHEMATICAL_READOUT_AGENT_URL
   ?? "https://bare-cedar-fog.561.group/a2a/mathematical-readout-exchange/.well-known/agent-card.json";
