@@ -109,3 +109,27 @@ test("do not disclose reviewed concepts whose defining documents are withheld",a
   await assert.rejects(buildGlossaryDataset({...args,revision:commit()}),/reviewed vocabulary .* outside the selected audience/);
   assert.equal(existsSync(args.output),false);
 });
+
+test("an owner-authored list stays complete and is not downgraded by strict Term observation",async t=>{
+  const {root,write,commit,args}=fixture(t);
+  const third="content/text/glossary/terms/third.md";
+  write(third,"---\nidentity: third\nname: Third\ndescription: Another reviewed result\n---\n");
+  const original=readFileSync(join(root,first),"utf8");
+  write(first,original.replace("result-concept: second","depends-on: [second, third]"));
+  const originalConfig=readFileSync(join(root,"research.toml"),"utf8");
+  write("research.toml",originalConfig.replace(`"${second}"]`,`"${second}","${third}"]`));
+  const originalCore=readFileSync(join(root,profile.reviewedVocabulary),"utf8");
+  write(profile.reviewedVocabulary,originalCore+
+    `<${concept}third> a skos:Concept ; rdfs:isDefinedBy <${rootUrl+third}> .\n`);
+  const predicate="https://561.group/ns/predicate/depends-on";
+  write(profile.authoredRelations,JSON.stringify({formatVersion:1,relations:{"depends-on":predicate}}));
+  const edges=["second","third"].map(target=>`<${concept}first> <${predicate}> <${concept+target}> .`).join(" ");
+  write("data/ask.rq",`ASK { GRAPH <${namespaceGraph}authored-assertions> { ${edges} } }`);
+  const out=await buildGlossaryDataset({...args,revision:commit()});
+  assert.equal(out.coverage.authoredObservations,2);
+  assert.equal(out.coverage.projectedAuthoredObservations,2);
+  assert.equal(out.coverage.unprojectedAuthoredObservations,0);
+  const bytes=readFileSync(join(out.destination,"build/dataset.nq"),"utf8");
+  assert.doesNotMatch(bytes,/"observed-unprojected"/u);
+  assert.doesNotMatch(bytes,new RegExp(`<${rootUrl+first}> <${predicate}>`,"u"));
+});
