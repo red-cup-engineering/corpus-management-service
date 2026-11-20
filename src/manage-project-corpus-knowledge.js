@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CORPUS_KNOWLEDGE_CONTRACT, PROJECT_CORPUS_SEAM_CONTRACT } from "./law.mjs";
-import Ajv2020 from "ajv/dist/2020.js";
+import { compileJsonSchema } from "@red-cup-engineering/json-schema-engineering-services-section/validation";
 import { createEvidenceJournal } from "@red-cup-engineering/semantic-record-journal-service";
 import { canonical, digest, contentId, analyzeForms } from "./lib/knowledge-forms.mjs";
 
@@ -14,7 +14,7 @@ const CONTEXT = "https://www.w3.org/ns/activitystreams";
 const SERVICE_CONTRACT = CORPUS_KNOWLEDGE_CONTRACT;
 const BILATERAL_CONTRACT = PROJECT_CORPUS_SEAM_CONTRACT;
 const NODE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const validateOfferSchema = new Ajv2020({ allErrors: true, strict: false }).compile(JSON.parse(readFileSync(join(NODE_ROOT, "lib/schemas/activity-offer.schema.json"), "utf8")));
+const validateOfferSchema = compileJsonSchema(JSON.parse(readFileSync(join(NODE_ROOT, "lib/schemas/activity-offer.schema.json"), "utf8")));
 
 
 
@@ -85,7 +85,8 @@ async function refuse(activity, reason, instant) {
 }
 
 function validateActivity(activity) {
-  if (!validateOfferSchema(activity)) return `schema-invalid ActivityStreams Offer: ${validateOfferSchema.errors.map((e) => `${e.instancePath || "/"} ${e.message}`).join("; ")}`;
+  const validation = validateOfferSchema.validate(activity);
+  if (!validation.valid) return `schema-invalid ActivityStreams Offer: ${validation.issues.map((e) => `${e.path || "/"} ${e.message}`).join("; ")}`;
   if (!activity || typeof activity !== "object" || Array.isArray(activity)) return "request must be a JSON object";
   if (activity["@context"] !== CONTEXT || activity.type !== "Offer") return "membrane accepts an ActivityStreams 2.0 Offer value";
   if (typeof activity.id !== "string" || typeof activity.actor !== "string") return "Offer requires string id and actor";
