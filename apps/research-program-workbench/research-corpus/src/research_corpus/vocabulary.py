@@ -186,7 +186,29 @@ _RESERVED_FIELDS = frozenset({"id", "title", "name", "description", "type", "kin
     "source-revision", "aliases", "keywords", "references", "tags", "authors"})
 
 
-def project_authored_relations(corpus: Corpus, *, audience: str) -> dict:
+def _relation_profile(root: Path, name: str) -> dict:
+    relative = _relative_path(name, "authored relation profile", ".json")
+    path = root / relative
+    if path.is_symlink() or not path.resolve().is_relative_to(root.resolve()):
+        raise VocabularyError("authored relation profile must stay within the root")
+    if not path.is_file():
+        raise VocabularyError(f"authored relation profile is not a regular file: {name}")
+    def unique_pairs(pairs: list[tuple[str, object]]) -> dict:
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise VocabularyError(f"duplicate authored relation profile key: {key}")
+            result[key] = value
+        return result
+    limit = 64 * 1024
+    with path.open("rb") as stream:
+        data = stream.read(limit + 1)
+    if len(data) > limit:
+        raise VocabularyError("authored relation profile exceeds 64 KiB")
+    return json.loads(data.decode("utf-8"), object_pairs_hook=unique_pairs)
+
+
+def project_authored_relations(corpus: Corpus, *, profile: dict, audience: str) -> dict:
     """Project exact owner-declared member relations; never read a prose hyperlink.
 
     This is a set of authored claims with source document addresses, neither
@@ -194,17 +216,25 @@ def project_authored_relations(corpus: Corpus, *, audience: str) -> dict:
     bind corpus bytes to an immutable revision before graph receiving.
     """
     config = corpus.config.vocabulary
-    if config is None or not config.authored_relations:
-        raise VocabularyError("vocabulary.authored_relations must explicitly select fields")
+    if config is None:
+        raise VocabularyError("research.toml has no [vocabulary] configuration")
+    if (not isinstance(profile, dict) or set(profile) != {"formatVersion", "relations"}
+            or type(profile["formatVersion"]) is not int or profile["formatVersion"] != 1):
+        raise VocabularyError("authored relation profile requires formatVersion 1 and relations")
+    rules = profile["relations"]
+    if (not isinstance(rules, dict) or not 1 <= len(rules) <= 64
+            or any(not isinstance(key, str) or not isinstance(value, str) for key, value in rules.items())):
+        raise VocabularyError("authored relation profile must map 1 to 64 fields to predicate IRIs")
+    relations = tuple(sorted(rules.items()))
     if audience not in ("public", "authenticated"):
         raise VocabularyError("an explicit public or authenticated audience is required")
-    for field, predicate in config.authored_relations:
+    for field, predicate in relations:
         if (not _FIELD_NAME.fullmatch(field) or field in _RESERVED_FIELDS or
                 field.startswith("date-")):
-            raise VocabularyError(f"vocabulary.authored_relations: {field} is not an admissible relation field")
-        _iri(predicate, f"vocabulary.authored_relations.{field}")
-    if len({predicate for _, predicate in config.authored_relations}) != len(config.authored_relations):
-        raise VocabularyError("vocabulary.authored_relations requires distinct predicate IRIs")
+            raise VocabularyError(f"authored relation profile: {field} is not an admissible relation field")
+        _iri(predicate, f"authored relation profile.{field}")
+    if len({predicate for _, predicate in relations}) != len(relations):
+        raise VocabularyError("authored relation profile requires distinct predicate IRIs")
     addresses = _vocabulary_addresses(config)
     admitted = {note.slug: note for note in _selected_notes(corpus, config)
                 if "consent-status" not in note.fm and (audience == "authenticated" or
@@ -212,7 +242,7 @@ def project_authored_relations(corpus: Corpus, *, audience: str) -> dict:
     assertions, unresolved = [], []
     for note in admitted.values():
         subject, source = _member_addresses(note, addresses)
-        for field, predicate in config.authored_relations:
+        for field, predicate in relations:
             if field not in note.fm:
                 continue
             target = note.fm[field]
@@ -260,7 +290,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--root", type=Path, help="root containing research.toml")
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--check", action="store_true", help="compare expected bytes without writing")
-    modes.add_argument("--authored-relations", action="store_true", help="emit only declared source assertions as JSON")
+    modes.add_argument("--authored-relations", metavar="PROFILE.json",
+                       help="emit only the selected profile's source assertions as JSON")
     parser.add_argument("--audience", choices=("public", "authenticated"),
                         help="required explicit audience for the authored-relations view")
     args = parser.parse_args(argv)
@@ -269,7 +300,8 @@ def main(argv: list[str] | None = None) -> int:
         config = load_config(root)
         corpus = load(config=config)
         if args.authored_relations:
-            evidence = project_authored_relations(corpus, audience=args.audience)
+            evidence = project_authored_relations(
+                corpus, profile=_relation_profile(root, args.authored_relations), audience=args.audience)
             print(json.dumps(evidence, ensure_ascii=False, sort_keys=True))
             return 1 if evidence["unresolved"] else 0
         if args.audience is not None:

@@ -361,20 +361,16 @@ renderability in the tested dialect, not correctness or formal proof.
 
 ### Read Science's authored glossary relations
 
-A Science owner can opt in to a frontmatter property whose scalar value names
-an exact reviewed member:
+A Science owner can opt in via a versioned JSON profile within the corpus, without
+changing the original `research.toml` read by existing tools:
 
-~~~toml
-[vocabulary.authored_relations]
-codomain-concept = "urn:example:vocabulary:codomainConcept"
+~~~json
+{"formatVersion":1,"relations":{"codomain-concept":"urn:example:vocabulary:codomainConcept"}}
 ~~~
 
-`research-vocabulary --root /path/to/section --authored-relations --audience authenticated`
-prints JSON evidence for the declared properties without rewriting the reviewed
-Turtle. The two document addresses and exact authored field/value travel with
-each assertion. Both endpoints must be in the explicit reviewed selection and
-pass their audience checks; public requires an explicit opt-in, and consent
-metadata holds an entry out. A hyperlink, label, or alias does not add an
-assertion. Unresolved declared values produce a nonzero verdict. The caller
-still binds source bytes to an immutable revision before graph publication or
-receiving, and the result does not prove the underlying scientific proposition.
+`research-vocabulary --root /path/to/section --authored-relations data/schema/authored-relations.json --audience authenticated`
+prints JSON evidence for the selected fields without rewriting the reviewed Turtle.
+Both endpoints must be explicitly reviewed and admitted to the requested audience.
+Aliases and prose links do not create assertions; unresolved field values fail.
+The output attributes assertions, not proof or publication, and the caller
+still binds source bytes to an immutable revision for graph receiving.
