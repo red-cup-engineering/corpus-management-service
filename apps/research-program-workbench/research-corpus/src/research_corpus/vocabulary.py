@@ -262,16 +262,22 @@ def project_authored_relations(corpus: Corpus, *, profile: dict, audience: str) 
         for field, predicate in relations:
             if field not in note.fm:
                 continue
-            target = note.fm[field]
-            other = admitted.get(target) if isinstance(target, str) and _FIELD_NAME.fullmatch(target) else None
-            if other is None:
+            value = note.fm[field]
+            targets = value if isinstance(value, list) else [value]
+            if (not targets
+                    or any(not isinstance(target, str) or not _FIELD_NAME.fullmatch(target)
+                           or target not in admitted for target in targets)
+                    or len(set(targets)) != len(targets)):
                 unresolved.append({"source": source, "field": field,
                                    "reason": "not-an-exact-admitted-member"})
                 continue
-            obj, target_source = _member_addresses(other, addresses)
-            assertions.append({"subject": subject, "predicate": predicate, "object": obj,
-                               "source": source, "targetSource": target_source,
-                               "field": field, "rawValue": target})
+            # A list is an authored declaration, not several independent
+            # opportunities to guess: resolve the whole field or none of it.
+            for target in targets:
+                obj, target_source = _member_addresses(admitted[target], addresses)
+                assertions.append({"subject": subject, "predicate": predicate, "object": obj,
+                                   "source": source, "targetSource": target_source,
+                                   "field": field, "rawValue": target})
     return {"schema": "research-vocabulary.authored-relations.v1", "audience": audience,
             "assertions": assertions, "unresolved": unresolved}
 

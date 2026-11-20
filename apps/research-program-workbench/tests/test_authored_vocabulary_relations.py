@@ -137,6 +137,26 @@ members = ["concepts/act.md", "concepts/diagram.md"]
                 self.assertIn("sources[0].path", err)
                 self.assertEqual(output.read_bytes(), prior)
 
+    def test_authored_relation_list_is_received_as_one_complete_field(self):
+        extra = self.root / "concepts" / "second-diagram.md"
+        extra.write_text("---\nname: Second diagram\ndescription: Another reviewed result.\n---\n")
+        self.config.write_text(self.config.read_text().replace(
+            '"concepts/diagram.md"]', '"concepts/diagram.md", "concepts/second-diagram.md"]',
+        ))
+        original = self.act.read_text()
+        self.act.write_text(original.replace("codomain-concept: diagram",
+                                            "codomain-concept: [diagram, second-diagram]"))
+        report = self.source_json()
+        self.assertEqual([r["rawValue"] for r in report["assertions"]], ["diagram", "second-diagram"])
+        self.assertEqual(report["unresolved"], [])
+        for values in ('[diagram, absent]', '[diagram, diagram]', '[diagram, 17]', '[]'):
+            with self.subTest(values=values):
+                self.act.write_text(original.replace("codomain-concept: diagram", "codomain-concept: " + values))
+                report = self.source_json()
+                self.assertEqual(report["assertions"], [])
+                self.assertEqual(len(report["unresolved"]), 1)
+                self.assertNotIn("absent", str(report))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -32,6 +32,12 @@ Pass `--out /path/to/report.md` to `program-auditor` to select the report output
 
 The original Pandoc pipeline may be selected separately from a qualified host. Bibliography generation consumes the same local `research-citations` workspace package; the original `research-dagger` ordering function remains importable, without a compatibility wrapper.
 
+Reviewed authored relation fields may declare one exact concept identity or
+a distinct list of exact identities. All values must be in the selected
+audience; a mixed, duplicated or unresolved list does not authorize a partial
+edge set. A reviewed relation's source evidence is not downgraded or duplicated
+by the separate strict Term admission view.
+
 ## Living Science sections
 
 The reviewed vocabulary accepts `sources` entries that are IRIs or structured
