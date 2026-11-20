@@ -232,16 +232,19 @@ of an exact reference is not proof that the 561 Group does not know it. The
 output is a *candidate source-linked research structure*, **not a received
 Holistic Integrated Thing Structure** or a mathematical theorem.
 
-The native receiving test calls the **pinned original question recorder**
-commit `23b4fcd56cdf9aa7636759a382c27edfeadc61bd` and then this
-same CLI/library across valid, missing, invalid, homonymous and resolved
-question conditions. The source check is:
+The [question receiving specification](specifications/living-science-receiving.md#first-class-question-receiving)
+uses the original recorder commit `23b4fcd56cdf9aa7636759a382c27edfeadc61bd` in
+the issued `@red-cup-engineering/record-research-question-service@0.1.1-dev.3`
+archive. GitHub verifies the original commit and archive digest before using
+its exact CLI; no secondary repository checkout is required.
+
+With the two actual Workbench packages installed and `RESEARCH_QUESTION_PRODUCER`
+set to that verified archive's CLI:
 
 ```sh
 python -m unittest discover -s program-planner/tests -v
 ```
 
-A runnable environment with its actual workspace packages is required.
 The ordinary no-`--question-file` Markdown batch planner remains unchanged.
 No scientific acceptance, installed host adoption or physical foam theorem is
 inferred from the research-program graph.
