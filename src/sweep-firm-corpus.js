@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { argValue } from "@red-cup-engineering/parse-javascript-argv-service";
 // Sweeps a filesystem subtree for candidate prior-art assets matching bounded
 // keywords, packages them as corpus-management-science-services-section knowledge forms, and
 // runs the team's own deterministic analyzeForms pipeline over them. A shared
@@ -21,10 +22,7 @@ const DEFAULT_MAX_TERRITORIES = 64;
 const ACTOR = "urn:ame:corpus-management-science-services-section";
 const TERRITORY_MARKERS = new Set(["package.json", "Cargo.toml", "lakefile.lean", "lean-toolchain", "pyproject.toml", "go.mod"]);
 
-function arg(flag) {
-  const index = process.argv.indexOf(flag);
-  return index === -1 ? undefined : process.argv[index + 1];
-}
+
 
 function args(flag) {
   const out = [];
@@ -33,7 +31,7 @@ function args(flag) {
 }
 
 function now() {
-  return arg("--now") ?? new Date().toISOString();
+  return argValue("--now") ?? new Date().toISOString();
 }
 
 function schemaFor(path) {
@@ -265,7 +263,7 @@ async function witnessTerritories(instant, result) {
   return appended;
 }
 
-const root = arg("--root");
+const root = argValue("--root");
 const terms = args("--term");
 if (!root || !existsSync(root) || !statSync(root).isDirectory()) {
   process.stdout.write(`${JSON.stringify({ type: "Refusal", reason: "--root must name an existing directory" }, null, 2)}\n`);
@@ -275,9 +273,9 @@ if (!root || !existsSync(root) || !statSync(root).isDirectory()) {
   process.exitCode = 2;
 } else {
   const instant = now();
-  const maxFiles = Number(arg("--max-files") ?? DEFAULT_MAX_FILES);
+  const maxFiles = Number(argValue("--max-files") ?? DEFAULT_MAX_FILES);
   if (process.argv.includes("--discover-territories")) {
-    const maximumTerritories = Number(arg("--max-territories") ?? DEFAULT_MAX_TERRITORIES);
+    const maximumTerritories = Number(argValue("--max-territories") ?? DEFAULT_MAX_TERRITORIES);
     const discovery = discoverTerritoryRoots(resolve(root), maximumTerritories);
     const allRoots = discovery.territories.map((entry) => entry.root);
     const territories = discovery.territories.map((entry) => {

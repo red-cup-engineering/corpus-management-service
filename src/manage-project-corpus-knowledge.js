@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { argValue } from "@red-cup-engineering/parse-javascript-argv-service";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,17 +16,14 @@ const BILATERAL_CONTRACT = PROJECT_CORPUS_SEAM_CONTRACT;
 const NODE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const validateOfferSchema = new Ajv2020({ allErrors: true, strict: false }).compile(JSON.parse(readFileSync(join(NODE_ROOT, "lib/schemas/activity-offer.schema.json"), "utf8")));
 
-function arg(flag) {
-  const index = process.argv.indexOf(flag);
-  return index === -1 ? undefined : process.argv[index + 1];
-}
+
 
 function now() {
-  return arg("--now") ?? new Date().toISOString();
+  return argValue("--now") ?? new Date().toISOString();
 }
 
 function inputValue() {
-  const path = arg("--input");
+  const path = argValue("--input");
   return JSON.parse(path ? readFileSync(resolve(path), "utf8") : readFileSync(0, "utf8"));
 }
 
@@ -133,7 +131,7 @@ function stage(loopId, name, predecessors, knowledgeRefs, evidence) {
 
 let activity;
 const instant = now();
-if (arg("--data-root") !== undefined || arg("--test-data-root") !== undefined) {
+if (argValue("--data-root") !== undefined || argValue("--test-data-root") !== undefined) {
   const output = rejection({}, "filesystem authority is fixed to this node's own data membrane; data-root overrides are refused");
   process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
   process.exitCode = 2;

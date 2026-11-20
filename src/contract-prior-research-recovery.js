@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { argValue } from "@red-cup-engineering/parse-javascript-argv-service";
 
 import { makeNiUri } from "@red-cup-engineering/uri-engineering-services-section/ni-uri";
 import { spawnSync } from "node:child_process";
@@ -23,17 +24,17 @@ const MAX_BYTES = 128_000;
 const MAX_MATCHES = 20;
 const RG_MAX_BUFFER = 32 * 1024 * 1024;
 
-function arg(flag) { const index = process.argv.indexOf(flag); return index === -1 ? undefined : process.argv[index + 1]; }
-function operation() { return arg("--operation") ?? "solicit-service"; }
-function now() { return arg("--now") ?? new Date().toISOString(); }
-function input() { return JSON.parse(readFileSync(arg("--input-file") ?? 0, "utf8")); }
+
+function operation() { return argValue("--operation") ?? "solicit-service"; }
+function now() { return argValue("--now") ?? new Date().toISOString(); }
+function input() { return JSON.parse(readFileSync(argValue("--input-file") ?? 0, "utf8")); }
 function attachments(note) { return Array.isArray(note?.attachment) ? note.attachment : note?.attachment === undefined ? [] : [note.attachment]; }
 function response(type, source, object) {
   return { "@context": CONTEXT, id: contentId({ actor: ACTOR, type, inReplyTo: source?.id ?? null, object }), type, actor: ACTOR, target: source?.actor ?? LMT_ACTOR, inReplyTo: source?.id ?? "urn:activity:unidentified", object };
 }
 function emit(value, code = 0) {
   const serialized = `${JSON.stringify(value, null, 2)}\n`;
-  const outputFile = arg("--output-file");
+  const outputFile = argValue("--output-file");
   if (outputFile === undefined) process.stdout.write(serialized);
   else writeFileSync(outputFile, serialized, "utf8");
   process.exitCode = code;
