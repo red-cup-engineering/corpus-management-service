@@ -23,6 +23,7 @@ class VocabularyError(ValueError):
 
 
 _IRI_LIKE = re.compile(r"^(?:(?:https?|urn)[:/]|[A-Za-z][A-Za-z0-9+.-]*://)", re.I)
+_IRI_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
 _BAD_PERCENT = re.compile(r"%(?![0-9A-Fa-f]{2})")
 _URN = re.compile(r"urn:[A-Za-z0-9][A-Za-z0-9-]{0,30}[A-Za-z0-9]:[^?#]+", re.I)
 _PREFIXES = """@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
@@ -78,9 +79,25 @@ def _source_iris(note: Note) -> list[str]:
 
     def array(value: object, field: str) -> None:
         if not isinstance(value, list):
-            raise VocabularyError(f"{note.path}: {field} must be an array of IRIs")
+            raise VocabularyError(f"{note.path}: {field} must be an array of IRIs or source records")
         for index, item in enumerate(value):
-            explicit(item, f"{field}[{index}]")
+            label = f"{field}[{index}]"
+            if not isinstance(item, dict):
+                explicit(item, label)
+                continue
+            # Qualified source records can carry an explicit IRI or a relative
+            # locator. A relative locator has no owner binding here and must not
+            # become an RDF identifier, even when the name looks like a Git path.
+            path_field = f"{note.path}: {label}.path"
+            locator = _text(item.get("path"), path_field)
+            if _IRI_SCHEME.match(locator):
+                explicit(locator, f"{label}.path")
+                continue
+            path = PurePosixPath(locator)
+            if (path.is_absolute() or not path.parts or ".." in path.parts
+                    or path.as_posix() != locator or locator != locator.strip()
+                    or "\\" in locator or any(ord(c) < 0x20 or ord(c) == 0x7f for c in locator)):
+                raise VocabularyError(f"{path_field} must be an explicit IRI or an exact root-relative path")
 
     def provenance(value: object, field: str) -> None:
         if isinstance(value, str):

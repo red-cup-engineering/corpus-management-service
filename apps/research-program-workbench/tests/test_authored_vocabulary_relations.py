@@ -100,6 +100,43 @@ members = ["concepts/act.md", "concepts/diagram.md"]
         self.assertEqual((code, output), (2, ""))
         self.assertIn("root-relative", err)
 
+    def test_structured_sources_project_only_explicit_iris(self):
+        prefix = self.act.read_text()
+        self.act.write_text(prefix.replace("codomain-concept: diagram\n",
+            "codomain-concept: diagram\nsources:\n"
+            "  - https://example.invalid/raw/evidence.md\n"
+            "  - path: https://example.invalid/raw/evidence.md\n"
+            "    date: 2026-03-02\n"
+            "  - path: urn:test:source:retained\n"
+            "  - path: services/science/other-owner/note.md\n"
+            "    session: witness-4\n"))
+        authored = self.act.read_bytes()
+        code, _, err = self.cli()
+        self.assertEqual(code, 0, err)
+        turtle = (self.root / "data" / "ontology.ttl").read_text()
+        self.assertEqual(turtle.count("prov:wasDerivedFrom <https://example.invalid/raw/evidence.md>"), 1)
+        self.assertIn("prov:wasDerivedFrom <urn:test:source:retained>", turtle)
+        self.assertNotIn("other-owner", turtle)
+        self.assertNotIn("witness-4", turtle)
+        self.assertEqual(self.cli("--check")[0], 0)
+        self.assertEqual(self.act.read_bytes(), authored)
+
+    def test_malformed_structured_source_does_not_replace_reviewed_turtle(self):
+        self.assertEqual(self.cli()[0], 0)
+        output = self.root / "data" / "ontology.ttl"
+        prior = output.read_bytes()
+        original = self.act.read_text()
+        for entry in ('{date: 2026-03-02}', '{path: 43}', '{path: "../escape.md"}',
+                      '{path: "/absolute/path.md"}', '{path: "https:/missing-host"}',
+                      '{path: "file:/tmp/unsupported.md"}'):
+            with self.subTest(entry=entry):
+                self.act.write_text(original.replace("codomain-concept: diagram\n",
+                    f"codomain-concept: diagram\nsources: [{entry}]\n"))
+                code, _, err = self.cli()
+                self.assertEqual(code, 2, err)
+                self.assertIn("sources[0].path", err)
+                self.assertEqual(output.read_bytes(), prior)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -34,6 +34,13 @@ The original Pandoc pipeline may be selected separately from a qualified host. B
 
 ## Living Science sections
 
+The reviewed vocabulary accepts `sources` entries that are IRIs or structured
+records with a `path`. Only an explicit HTTP(S) IRI or URN becomes RDF
+provenance. Exact root-relative paths and their qualifiers stay in the
+original source record: the Workbench does not infer their repository, mint
+a URL, or fetch them.
+
+
 The same workbench reads a section's maintained glossary, claims, and teaching
 articles. Select their actual leaf directories in the section's `research.toml`:
 
