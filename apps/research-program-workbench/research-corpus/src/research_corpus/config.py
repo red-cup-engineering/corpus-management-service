@@ -43,15 +43,14 @@ class VocabularyConfig:
     document_base_url: str
     output: str
     members: tuple[str, ...]
-    authored_relations: tuple[tuple[str, str], ...] = ()
 
 
 def _vocabulary_config(value: object) -> VocabularyConfig | None:
     if value is None:
         return None
     fields = {"scheme", "namespace", "document_base_url", "output", "members"}
-    if not isinstance(value, dict) or not (fields <= set(value) <= fields | {"authored_relations"}):
-        raise ValueError("[vocabulary] requires " + ", ".join(sorted(fields)) + ", with optional authored_relations")
+    if not isinstance(value, dict) or set(value) != fields:
+        raise ValueError("[vocabulary] requires exactly " + ", ".join(sorted(fields)))
     for key in fields - {"members"}:
         if not isinstance(value[key], str) or not value[key].strip():
             raise ValueError(f"vocabulary.{key} must be a nonempty string")
@@ -59,14 +58,10 @@ def _vocabulary_config(value: object) -> VocabularyConfig | None:
     if (not isinstance(members, list) or not members
             or any(not isinstance(item, str) or not item for item in members)):
         raise ValueError("vocabulary.members must be a nonempty array of paths")
-    relations = value.get("authored_relations", {})
-    if (not isinstance(relations, dict) or
-            any(not isinstance(iri, str) or not iri.strip() for iri in relations.values())):
-        raise ValueError("vocabulary.authored_relations must map frontmatter fields to predicate IRIs")
     return VocabularyConfig(
         scheme=value["scheme"], namespace=value["namespace"],
         document_base_url=value["document_base_url"], output=value["output"],
-        members=tuple(members), authored_relations=tuple(sorted(relations.items())),
+        members=tuple(members),
     )
 
 

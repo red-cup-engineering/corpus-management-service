@@ -29,7 +29,8 @@ document_base_url = "https://example.invalid/blob/main/"
 output = "data/ontology.ttl"
 members = ["concepts/act.md", "concepts/diagram.md"]
 """)
-        self.policy = '\n[vocabulary.authored_relations]\ncodomain-concept = "urn:test:predicate:codomain"\n'
+        self.profile_path = self.root / "policy.json"
+        self.policy = {"formatVersion": 1, "relations": {"codomain-concept": "urn:test:predicate:codomain"}}
         self.act = self.root / "concepts" / "act.md"
         self.diagram = self.root / "concepts" / "diagram.md"
         self.act.write_text("---\nname: Act\ndescription: Describes a witnessed act.\nvisibility: public\n"
@@ -37,10 +38,10 @@ members = ["concepts/act.md", "concepts/diagram.md"]
         self.diagram.write_text("---\nname: Diagram\ndescription: Describes the diagram.\n---\n\nNot an act.\n")
 
     def configure(self):
-        self.config.write_text(self.config.read_text() + self.policy)
+        self.profile_path.write_text(json.dumps(self.policy))
 
     def source_json(self, audience="authenticated"):
-        return project_authored_relations(load(config=load_config(self.root)), audience=audience)
+        return project_authored_relations(load(config=load_config(self.root)), profile=self.policy, audience=audience)
 
     def cli(self, *args):
         out, err = StringIO(), StringIO()
@@ -52,7 +53,7 @@ members = ["concepts/act.md", "concepts/diagram.md"]
         before = render(load(config=load_config(self.root)))
         self.configure()
         self.assertEqual(render(load(config=load_config(self.root))), before)
-        code, output, _ = self.cli("--authored-relations", "--audience", "authenticated")
+        code, output, _ = self.cli("--authored-relations", "policy.json", "--audience", "authenticated")
         self.assertEqual(code, 0)
         row, = json.loads(output)["assertions"]
         self.assertEqual(row, {
@@ -71,7 +72,7 @@ members = ["concepts/act.md", "concepts/diagram.md"]
 
     def test_neither_alias_nor_audience_boundary_is_promoted(self):
         self.configure()
-        _, _, err = self.cli("--authored-relations")
+        _, _, err = self.cli("--authored-relations", "policy.json")
         self.assertIn("explicit public or authenticated", err)
         report = self.source_json(audience="public")
         self.assertEqual(report["assertions"], [])
@@ -80,14 +81,24 @@ members = ["concepts/act.md", "concepts/diagram.md"]
         self.diagram.write_text(self.diagram.read_text().replace("---\n\n", "consent-status: hold\n---\n\n"))
         self.assertEqual(self.source_json()["assertions"], [])
         self.act.write_text(self.act.read_text().replace("codomain-concept: diagram", "codomain-concept: The Diagram"))
-        code, output, _ = self.cli("--authored-relations", "--audience", "authenticated")
+        code, output, _ = self.cli("--authored-relations", "policy.json", "--audience", "authenticated")
         self.assertEqual(code, 1)
         self.assertEqual(json.loads(output)["assertions"], [])
 
     def test_no_projection_without_owner_policy(self):
-        code, output, err = self.cli("--authored-relations", "--audience", "authenticated")
+        code, output, err = self.cli("--authored-relations", "policy.json", "--audience", "authenticated")
         self.assertEqual((code, output), (2, ""))
-        self.assertIn("must explicitly select fields", err)
+        self.assertIn("policy.json", err)
+        self.configure()
+        old = self.config.read_bytes()
+        self.profile_path.write_text('{"formatVersion":1,"relations":{"codomain-concept":"urn:test:a","codomain-concept":"urn:test:b"}}')
+        code, output, err = self.cli("--authored-relations", "policy.json", "--audience", "authenticated")
+        self.assertEqual((code, output), (2, ""))
+        self.assertIn("duplicate", err)
+        self.assertEqual(self.config.read_bytes(), old)
+        code, output, err = self.cli("--authored-relations", "../policy.json", "--audience", "authenticated")
+        self.assertEqual((code, output), (2, ""))
+        self.assertIn("root-relative", err)
 
 
 if __name__ == "__main__":
