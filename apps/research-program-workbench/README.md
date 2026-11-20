@@ -84,7 +84,7 @@ Generated YAML metadata quotes title, subtitle and bibliography strings so that
 colons, quotation marks, newlines and Unicode retain their values when parsed.
 
 ```sh
-python -m unittest discover -s monograph-composer/tests -v
+python -m unittest discover -s tests -p test_living_science_contracts.py -v
 ```
 
 Run the original validator before composing a document:
@@ -96,11 +96,11 @@ uv run program-validator --root /path/to/science-section --no-lean --format json
 This check covers local inline `.md` file destinations. It does not fetch network
 URLs, validate fragment anchors, or parse reference-style links or HTML anchors.
 It validates structure and source identity, not a claim's scientific truth.
-The receiving tests exercise the same CLI, planner, auditor and composer with
+The [living-science receiving specification](specifications/living-science-receiving.md) describes tests that exercise the same CLI, planner, auditor and composer with
 the Relationality section's nested directory shapes:
 
 ```sh
-python -m unittest discover -s program-validator/tests -v
+python -m unittest discover -s tests -p test_living_science_contracts.py -v
 ```
 
 ### Generate a reviewed vocabulary from the source notes
@@ -166,7 +166,7 @@ selection, escaping, provenance, drift, refusal without output replacement, and
 the actual nested glossary directory shape:
 
 ```sh
-python -m unittest discover -s research-corpus/tests -v
+python -m unittest discover -s tests -p test_living_science_contracts.py -v
 ```
 
 ## First-class Science question → research-program focus

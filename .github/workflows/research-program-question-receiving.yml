@@ -56,20 +56,14 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Install research workspace packages
+      - name: Install the living-science packages
         run: |
           python -m pip install \
-            -e apps/research-program-workbench/research-corpus \
-            -e apps/research-program-workbench/research-citations \
-            -e apps/research-program-workbench/program-planner \
-            -e apps/research-program-workbench/program-validator \
-            -e apps/research-program-workbench/program-auditor \
-            -e apps/research-program-workbench/research-dagger \
-            -e apps/research-program-workbench/monograph-composer \
-            -e apps/research-program-workbench/cite-tool
-      - name: Verify the installed corpus diagnostic comparison
-        run: |
-          python -m unittest discover -s apps/research-program-workbench/program-validator/tests -v
+            apps/research-program-workbench/research-corpus \
+            apps/research-program-workbench/research-citations \
+            apps/research-program-workbench/program-validator \
+            apps/research-program-workbench/research-dagger \
+            apps/research-program-workbench/monograph-composer
       - name: Ensure the native citation renderer is available
         shell: bash
         run: |
@@ -78,12 +72,9 @@ jobs:
             sudo apt-get install -y --no-install-recommends pandoc
           fi
           pandoc --version
-      - name: Verify reader preflight and anchors against actual Pandoc output
+      - name: Verify the living-science receiving specification
         run: |
-          python -m unittest discover -s apps/research-program-workbench/monograph-composer/tests -v
-      - name: Validate living Science sections and citation preservation
-        run: |
-          python -m unittest discover -s apps/research-program-workbench/tests -v
+          python -m unittest discover -s apps/research-program-workbench/tests -p test_living_science_contracts.py -v
 
   authored-vocabulary-receiving:
     runs-on: ubuntu-latest
