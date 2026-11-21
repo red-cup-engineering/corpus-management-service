@@ -1,12 +1,14 @@
 """Acceptance tests derived from specifications/living-science-receiving.md."""
 from html.parser import HTMLParser
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
 import unittest
+from urllib.parse import quote
 
 LESSONS = "content/text/documents/articles/teaching-articles/explanations"
 SOURCES = "content/text/documents/articles/bibliographies/references"
@@ -155,6 +157,79 @@ An archival namesake is not the live source.
         manifest = (self.root / "tools/build/manifest.txt").read_text(encoding="utf-8")
         self.assertEqual([line for line in manifest.splitlines() if line.startswith("R ")],
                          [f"R {SOURCES}/observation\treference"])
+
+    def test_ls2_reader_keeps_exact_file_links_from_each_output_directory(self):
+        lesson = self.root / LESSONS / "method.md"
+        original = lesson.read_text(encoding="utf-8")
+        exhibit = self.root / "archive/Field Notes/observation.md"
+        self.write("archive/Field Notes/observation.md", "# Separate observation source\n")
+        self.write(f"{LESSONS}/closed.md", "---\ntype: question\nstatus: closed\n---\nClosed note.\n")
+        closed = self.root / LESSONS / "closed.md"
+        indexed = self.root / SOURCES / "observation.md"
+        (lesson.parent / "linked.md").symlink_to(exhibit)
+        # root is the "section" child of this test's TemporaryDirectory.
+        outside_source = self.root.parent / "outside.md"
+        outside_source.write_text("A sibling publication outside this corpus.\n", encoding="utf-8")
+        target = quote(os.path.relpath(exhibit, lesson.parent))
+        outside = os.path.relpath(outside_source, lesson.parent)
+        suffix = "?view=source&edition=1#limits"
+        original = original.replace("# Method and evidence",
+                                    f"# Method and evidence: [Exhibit]({target})", 1)
+        lesson.write_text(original +
+                          f'\n[Exact *file*](<{target}{suffix}> "source title").\n'
+                          '\n[Closed question](closed.md).\n'
+                          '\n[Limits](../../bibliographies/references/observation.md#measurement-limits).\n'
+                          '\n[Source viewer](../../bibliographies/references/observation.md?view=source).\n'
+                          f'\n[Missing](missing.md) [Linked](linked.md) [Outside]({outside}).\n'
+                          '\n[External](https://example.invalid/file.md#outer) [Here](#method).\n'
+                          f'\n`[Literal example]({target})`\n', encoding="utf-8")
+
+        intermediate = self.root / "tools/build/composed.md"
+        direct = self.run_cli("monograph_composer", "--no-pandoc")
+        self.assertEqual(direct.returncode, 0, direct.stderr)
+        self.assertFalse((self.root / READER).exists())
+        interim = intermediate.read_text(encoding="utf-8")
+        self.assertIn(f'[Exhibit]({quote(os.path.relpath(exhibit, intermediate.parent))})', interim)
+        self.assertIn(f'[Exact *file*](<{quote(os.path.relpath(exhibit, intermediate.parent))}{suffix}> "source title")', interim)
+        self.assertIn(f'[Closed question]({quote(os.path.relpath(closed, intermediate.parent))})', interim)
+        indexed_from_intermediate = quote(os.path.relpath(indexed, intermediate.parent))
+        self.assertIn(f'[Limits]({indexed_from_intermediate}#measurement-limits)', interim)
+        self.assertIn(f'[Source viewer]({indexed_from_intermediate}?view=source)', interim)
+        for literal in ('[Missing](missing.md)', '[Linked](linked.md)', f'[Outside]({outside})',
+                        '[External](https://example.invalid/file.md#outer)', '[Here](#method)',
+                        f'`[Literal example]({target})`'):
+            self.assertIn(literal, interim)
+
+        for output in (self.root / READER, self.root / "build/nested/out/reader.md"):
+            with self.subTest(output=output):
+                result = self.run_cli("monograph_composer", "--out", str(output))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                html = subprocess.run(["pandoc", "-f", "commonmark_x-gfm_auto_identifiers", "-t", "html",
+                                       str(output)], capture_output=True, text=True,
+                                      timeout=15, check=True).stdout
+                markup = ReaderIndex(html)
+                self.assertIn(quote(os.path.relpath(exhibit, output.parent)), markup.hrefs)
+                self.assertIn(quote(os.path.relpath(exhibit, output.parent)) + suffix, markup.hrefs)
+                self.assertIn(quote(os.path.relpath(closed, output.parent)), markup.hrefs)
+                self.assertIn("#observation", markup.hrefs)
+                indexed_from_output = quote(os.path.relpath(indexed, output.parent))
+                self.assertIn(indexed_from_output + "#measurement-limits", markup.hrefs)
+                self.assertIn(indexed_from_output + "?view=source", markup.hrefs)
+                self.assertNotIn("closed", markup.ids)
+                self.assertNotIn("Separate observation source", html)
+                self.assertIn('<em>file</em></a>', html)
+                self.assertIn('title="source title"', html)
+                self.assertEqual(intermediate.read_text(encoding="utf-8"), interim)
+
+        configured = self.root / READER
+        configured.unlink()
+        actual = self.root / "artifacts/physical/reader.md"
+        configured.symlink_to(actual)
+        result = self.run_cli("monograph_composer")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(configured.is_symlink())
+        self.assertIn(quote(os.path.relpath(exhibit, actual.parent)) + suffix,
+                      actual.read_text(encoding="utf-8"))
 
     def test_ls3_failed_citeproc_preserves_previously_received_outputs(self):
         lesson = self.root / LESSONS / "method.md"

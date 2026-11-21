@@ -13,6 +13,9 @@ from research_dagger import order_corpus
 from .ordering import assign_chapters
 from .pandoc import PandocError, ensure_pandoc, run as run_pandoc, unresolved_citations
 from .render import (
+    ReaderTargets,
+    further_reading_slugs,
+    question_slugs,
     render_appendix_further_reading,
     render_appendix_questions,
     render_appendix_source_notes,
@@ -65,33 +68,42 @@ def _yaml_preamble(title: str | None, subtitle: str | None,
 
 def build_composed(corpus, order, chapter_content, chapter_order, part_num_to_narrative,
                    *, title: str | None, subtitle: str | None,
-                   bib_relpath: str | None) -> str:
+                   bib_relpath: str | None, output_dir: Path | None = None) -> str:
     notes = corpus.notes
-    all_slugs = corpus.slugs()
+    preludes = chapter_content.get(None, [])
+    sections = [(part, relation_targets(notes[part].fm, "chapters"))
+                for _, part in sorted(part_num_to_narrative.items())]
+    questions, refs, sources = question_slugs(corpus), further_reading_slugs(corpus), source_note_slugs(corpus)
+    emitted = set(preludes) | set(questions) | set(refs) | set(sources)
+    for part, chapters in sections:
+        emitted.add(part)
+        for chapter in chapters:
+            emitted.add(chapter)
+            emitted.update(chapter_content.get(chapter, []))
+    targets = ReaderTargets(corpus.root.resolve(), corpus.path_slugs, emitted, output_dir)
     parts = _yaml_preamble(title, subtitle, bib_relpath)
 
     # Preliminaries: notes with no chapter assignment.
-    for s in chapter_content.get(None, []):
+    for s in preludes:
         if notes[s].kind == "narrative":
-            parts.append(render_preface(notes[s], all_slugs, path_slugs=corpus.path_slugs))
+            parts.append(render_preface(notes[s], targets))
         else:
-            parts.append(render_block(notes[s], all_slugs, path_slugs=corpus.path_slugs))
+            parts.append(render_block(notes[s], targets))
         parts.append("")
 
-    for part_num in sorted(part_num_to_narrative):
-        pn_slug = part_num_to_narrative[part_num]
-        parts.append(render_part(notes[pn_slug], all_slugs, path_slugs=corpus.path_slugs))
+    for pn_slug, chapters in sections:
+        parts.append(render_part(notes[pn_slug], targets))
         parts.append("")
-        for ch in relation_targets(notes[pn_slug].fm, "chapters"):
-            parts.append(render_chapter(notes[ch], all_slugs, path_slugs=corpus.path_slugs))
+        for ch in chapters:
+            parts.append(render_chapter(notes[ch], targets))
             parts.append("")
             for s in chapter_content.get(ch, []):
-                parts.append(render_block(notes[s], all_slugs, path_slugs=corpus.path_slugs))
+                parts.append(render_block(notes[s], targets))
                 parts.append("")
 
-    appendix = render_appendix_questions(corpus, all_slugs)
-    further = render_appendix_further_reading(corpus, all_slugs)
-    source_notes = render_appendix_source_notes(corpus, all_slugs)
+    appendix = render_appendix_questions(corpus, targets, questions)
+    further = render_appendix_further_reading(corpus, targets, refs)
+    source_notes = render_appendix_source_notes(corpus, targets, sources)
     if appendix or further or source_notes:
         parts.append("## Supplements {#supplements}")
         parts.append("")
@@ -128,7 +140,7 @@ def main(argv: list[str] | None = None) -> int:
     config = load_config(root)
     corpus = load(root=root, config=config)
 
-    out_path = args.out.resolve() if args.out else config.output_path
+    out_path = (args.out if args.out else config.output_path).resolve()
     build_dir = root / "tools" / "build"
     composed_path = build_dir / "composed.md"
     manifest_path = build_dir / "manifest.txt"
@@ -161,12 +173,18 @@ def main(argv: list[str] | None = None) -> int:
                   else config.bib_path if config.bib_path.is_file() else None)
     bib_relpath = (os.path.relpath(bib_target, composed_path.parent)
                    if bib_target is not None else None)
-    composed = build_composed(
-        corpus, order, chapter_content, chapter_order, part_num_to_narrative,
-        title=config.compose.title,
-        subtitle=config.compose.subtitle,
-        bib_relpath=bib_relpath,
-    )
+
+    def compose(output_dir: Path) -> str:
+        return build_composed(
+            corpus, order, chapter_content, chapter_order, part_num_to_narrative,
+            title=config.compose.title, subtitle=config.compose.subtitle,
+            bib_relpath=bib_relpath, output_dir=output_dir,
+        )
+
+    composed_dir = composed_path.resolve().parent
+    composed = compose(composed_dir)
+    final_input = (composed if args.no_pandoc or out_path.parent == composed_dir
+                   else compose(out_path.parent))
     check_citations = not args.no_pandoc and (
         args.require_resolved_citations or config.compose.require_resolved_citations
     )
@@ -176,7 +194,7 @@ def main(argv: list[str] | None = None) -> int:
                 raise PandocError("citation preflight requires a selected .bib bibliography")
             bibliography = (generated_bib[0] if generated_bib is not None
                             else bib_target.read_text(encoding="utf-8") if bib_target is not None else None)
-            missing = unresolved_citations(composed, bibliography)
+            missing = unresolved_citations(final_input, bibliography)
         except (OSError, UnicodeError, PandocError) as exc:
             print(f"composer: {exc}", file=sys.stderr)
             return 1
@@ -205,7 +223,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.no_pandoc:
         return 0
 
-    run_pandoc(composed_path, bib_target, out_path)
+    run_pandoc(final_input, bib_target, out_path)
     print(f"monograph:   {out_path}")
     return 0
 
