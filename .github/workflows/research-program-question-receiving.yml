@@ -124,7 +124,7 @@ jobs:
       - name: Install exact RDF evidence verifier
         run: >-
           python -m pip install
-          git+https://github.com/red-cup-engineering/rdf-vocabulary-conformance-service.git@bd180061216fb2a57cc18c6349c973646b5293df
+          git+https://github.com/red-cup-engineering/rdf-vocabulary-conformance-service.git@40ded55d7a3c7cdb73e157301967294a8120f5cb
       - name: Qualify the installed glossary snapshot receiver
         run: |
           verify-glossary-snapshot --help

@@ -1,6 +1,9 @@
 """Receive an authenticated glossary dataset against its pinned Git sources."""
+from __future__ import annotations
+
 import argparse
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass
 import gzip
 import hashlib
@@ -12,16 +15,25 @@ import subprocess
 import sys
 from tempfile import TemporaryDirectory
 from urllib.parse import quote
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from rdflib import Dataset
+    from rdflib.query import Result
+    from rdflib.term import Identifier
 
 LIMIT = 16 * 1024 * 1024
 REGULAR = {"100644", "100755"}
 
 
 def git(root, *args):
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    env.update(GIT_NO_LAZY_FETCH="1", GIT_OPTIONAL_LOCKS="0",
+               GIT_TERMINAL_PROMPT="0", GIT_GRAFT_FILE="/dev/null")
     return subprocess.check_output(
         ["git", "--no-replace-objects", "--literal-pathspecs", *args],
         cwd=root,
-        env={**os.environ, "GIT_NO_LAZY_FETCH": "1", "GIT_OPTIONAL_LOCKS": "0"},
+        env=env,
         stderr=subprocess.PIPE,
     )
 
@@ -87,28 +99,35 @@ class SnapshotReceiver:
                 raise ValueError(f"Snapshot path may not pass through a symlink: {name}")
         return selected
 
-    def source_context(self):
+    def receiving_commit(self):
+        receiving = git(self.root, "rev-parse", "--verify", "HEAD^{commit}").decode("ascii").strip()
+        if not re.fullmatch(r"[0-9a-f]{40}", receiving):
+            raise ValueError("A full receiving Git commit is required")
+        return receiving
+
+    def source_context(self, receiving):
         manifest = json.loads(self.selected(self.manifest).read_bytes())
-        profile = json.loads(git(self.root, "cat-file", "blob", "HEAD:" + self.profile))
+        profile = json.loads(git(self.root, "cat-file", "blob", receiving + ":" + self.profile))
         source = manifest["source"]["commit"]
         if not isinstance(source, str) or not re.fullmatch(r"[0-9a-f]{40}", source):
             raise ValueError("Glossary source must be an exact lowercase Git commit ID")
         if git(self.root, "cat-file", "-t", source).strip() != b"commit":
             raise ValueError("Glossary source is not a Git commit")
         try:
-            git(self.root, "merge-base", "--is-ancestor", source, "HEAD")
+            git(self.root, "merge-base", "--is-ancestor", source, receiving)
         except subprocess.CalledProcessError as error:
             raise ValueError("Glossary source is not an ancestor of the receiving checkout") from error
         return manifest, profile, source
 
 
-    def validated_context(self):
+    def validated_context(self, receiving=None):
         """Admit the same source/profile and tracked inventory for every reader."""
-        manifest, profile, source = self.source_context()
+        receiving = self.receiving_commit() if receiving is None else receiving
+        manifest, profile, source = self.source_context(receiving)
         artifact = manifest["artifact"]
         expected = manifest["source"]
         conformance = exact_path(profile["datasetConformance"])
-        config = json.loads(git(self.root, "cat-file", "blob", "HEAD:" + conformance))
+        config = json.loads(git(self.root, "cat-file", "blob", receiving + ":" + conformance))
         if manifest.get("formatVersion") != 1 or artifact["path"] != self.snapshot:
             raise ValueError("Unexpected glossary manifest contract")
         if config["dataset"]["file"] != self.output:
@@ -126,11 +145,11 @@ class SnapshotReceiver:
         for path, oid in expected["inputs"].items():
             if object_id(self.root, source, path, REGULAR) != oid:
                 raise ValueError(f"Manifest input does not match the claimed source: {path}")
-            if object_id(self.root, "HEAD", path, REGULAR) != oid:
+            if object_id(self.root, receiving, path, REGULAR) != oid:
                 raise ValueError(f"Glossary snapshot is stale: build input changed: {path}")
-        if object_id(self.root, "HEAD", content, {"040000"}) != expected["contentTree"]:
+        if object_id(self.root, receiving, content, {"040000"}) != expected["contentTree"]:
             prior = content_catalog(self.root, source, profile)
-            current = content_catalog(self.root, "HEAD", profile)
+            current = content_catalog(self.root, receiving, profile)
             # Link presence depends on the names of regular content files, not
             # changes to the bytes of files outside the selected Markdown glossary.
             if prior.keys() != current.keys() or glossary_catalog(prior, profile) != glossary_catalog(current, profile):
@@ -172,6 +191,12 @@ class SnapshotReceiver:
         """
         manifest, _, _ = self.validated_context()
         return self._read_prepared_dataset(manifest)
+
+    def open_saved_queries(self):
+        """Open the verified local dataset and its saved queries at one receiving cut."""
+        receiving = self.receiving_commit()
+        manifest, _, _ = self.validated_context(receiving)
+        return SavedGlossaryQueries(self.root, receiving, self._read_prepared_dataset(manifest))
 
     def verify_evidence(self):
         from rdflib import Graph, Literal, RDF, URIRef
@@ -285,6 +310,38 @@ class SnapshotReceiver:
                 raise ValueError("Native glossary navigation projection exceeds the dataset size limit")
             count = compare_navigation(dataset, parse_nquads(expected), profile["namespace"])
         print(f"Verified {count} navigation triples from pinned Git.")
+
+
+@dataclass(frozen=True)
+class SavedGlossaryQueries:
+    """Read committed local SELECTs over one digest-verified named dataset."""
+
+    root: Path
+    revision: str
+    dataset: Dataset
+
+    def select(self, path: str, *, bindings: Mapping[str, Identifier] | None = None) -> Result:
+        from rdflib import Literal, URIRef
+        from rdf_vocabulary_conformance import prepare_local_select
+        from rdf_vocabulary_conformance.dataset_checks import MAX_QUERY_BYTES
+
+        query = exact_path(path)
+        if not query.endswith(".rq"):
+            raise ValueError("A saved SELECT must be selected by its .rq path")
+        values = {} if bindings is None else bindings
+        if (not isinstance(values, Mapping) or len(values) > 32
+                or any(not isinstance(name, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name)
+                       or not isinstance(value, (URIRef, Literal)) for name, value in values.items())):
+            raise ValueError("Saved SELECT bindings need variable names and RDF IRIs or literals")
+        blob = object_id(self.root, self.revision, query, REGULAR)
+        size = int(git(self.root, "cat-file", "-s", blob))
+        if size > MAX_QUERY_BYTES:
+            raise ValueError("Saved SELECT exceeds the input byte limit")
+        query_bytes = git(self.root, "cat-file", "blob", blob)
+        if len(query_bytes) != size:
+            raise ValueError("Saved SELECT bytes differ from the pinned Git object length")
+        prepared = prepare_local_select(query_bytes)
+        return self.dataset.query(prepared, initBindings=dict(values), use_store_provided=False)
 
 
 def verify_term_statuses(document_graph, namespace, document_paths, coverage):
