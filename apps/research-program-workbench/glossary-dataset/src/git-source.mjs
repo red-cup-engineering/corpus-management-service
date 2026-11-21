@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { readTreeEntries } from "@red-cup-engineering/git-engine/git-command-codec";
-import { readGitBlobObjectsSync } from "@red-cup-engineering/git-engine/pinned-source-files";
-import { readEvidenceBoundCommit } from "@red-cup-engineering/git-engine/source-path-proof";
+import { readBlobsSync } from "@red-cup-engineering/git-engine/partial-clone";
+import { readCommitProof } from "@red-cup-engineering/git-engine/object-proof";
 import { gitBlobIdOf } from "@red-cup-engineering/git-engine/git-object-id";
 
 const oidPattern = /^[a-f0-9]{40}$/u;
@@ -35,7 +35,7 @@ export function openPinnedGitSource(directory, revision) {
       maxBuffer:limits.maxBytes, timeout:limits.timeoutMs,
     });
   }
-  const {tree:{sha:tree}}=readEvidenceBoundCommit({sha:revision,object:git(["cat-file","commit",revision])});
+  const {tree:{sha:tree}}=readCommitProof({sha:revision,object:git(["cat-file","commit",revision])});
   function list(scope) {
     if (!safePath(scope)) throw new TypeError("unsafe Git scope");
     return readTreeEntries(git(["ls-tree","-r","-z","--full-tree",tree,"--",scope]),100_000).map(({path,mode,type,object:oid})=>{
@@ -45,7 +45,7 @@ export function openPinnedGitSource(directory, revision) {
   }
   function receive(entries) {
     if (entries.some(e=>!e.regular)) throw new Error("selected Git sources must be regular blobs");
-    const native = readGitBlobObjectsSync({directory,objects:entries.map(e=>e.oid),receiveMissing:false,...limits,environment});
+    const native = readBlobsSync({directory,objects:entries.map(e=>e.oid),receiveMissing:false,...limits,environment});
     return entries.map(entry=>{
       const bytes=native.get(entry.oid);
       if (!bytes || gitBlobIdOf(bytes)!==entry.oid) throw new Error(`Git blob identity mismatch: ${entry.path}`);

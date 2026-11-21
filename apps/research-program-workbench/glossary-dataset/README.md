@@ -16,9 +16,11 @@ claim or classifies all glossary notes as reviewed concepts.
 - Node 24 and native Git. This operation reads an **already available, exact
   local SHA-1 commit**. It does not change the checkout, resolve a branch in
   place of the requested commit, fetch missing objects, or ask for credentials.
-- Exact Git Engine 0.1.10, Term 0.3.8 and Triplet 0.2.9 artifacts. The package
-  manifest fixes these direct inputs. Pass the actual resolved cohort through
-  your established package acquisition process.
+- Exact Git Engine 0.1.11-dev.0, Term 0.3.8 and Triplet 0.2.9 artifacts. The package
+  manifest fixes these direct inputs. Use the issued Git Engine archive from
+  the canonical registry and its [owner's runtime lock](https://github.com/red-cup-engineering/git-engine/blob/5618cc1c6b722179aa29d03b93e8176e059cd467/package-lock.json).
+  Pass the actual resolved cohort through your established package acquisition
+  process.
 - Markdown **0.6.0-dev.0**, from [merged source
   9e69aa58](https://github.com/red-cup-engineering/markdown-engineering-services-section/tree/9e69aa588317cae2c505c097ee0ce32180f6000c)
   ([Markdown #62](https://github.com/red-cup-engineering/markdown-engineering-services-section/pull/62)).
