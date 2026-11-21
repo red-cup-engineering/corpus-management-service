@@ -15,7 +15,7 @@ const workbenchModules = [
   "snapshot-receipt.mjs",
 ];
 const providerExports = {
-  gitEngine: ["@red-cup-engineering/git-engine", ["git-object-id", "git-command-codec", "pinned-source-files", "source-path-proof"]],
+  gitEngine: ["@red-cup-engineering/git-engine", ["git-object-id", "git-command-codec", "partial-clone", "object-proof"]],
   markdown: ["@red-cup-engineering/markdown-engineering-services-section", ["read-markdown-frontmatter", "read-markdown-structure", "read-markdown-features", "derive-markdown-vault-graph", "resolve-markdown-link-target"]],
   term: ["@red-cup-engineering/term-engineering-services-section", ["glossary-index", "glossary-skos", "term-carrier"]],
   tripletSerialization: ["@red-cup-engineering/computer-triplet-serialized-content-engineering-services-section", ["rdf-named-graph", "rdf-terms", "n-quads", "rdf-canonicalization"]],
