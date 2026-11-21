@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { appendFileSync, cpSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { test } from "node:test";
 import { gunzipSync } from "node:zlib";
-import { createSnapshotReceipt, sha256 } from "../src/snapshot-receipt.mjs";
+import { createSnapshotReceipt, observeWorkbench, sha256 } from "../src/snapshot-receipt.mjs";
 
 const datasetPath = "build/dataset.nq";
 const nquads = "<urn:x> <urn:y> <urn:z> <urn:g> .\n";
@@ -31,4 +35,22 @@ test("receipt binds the admitted graph to exact source, canonical GNU gzip and b
 test("a stale conformance digest or coverage from another revision cannot become a receipt",()=>{
   assert.throws(()=>createSnapshotReceipt({...args,nquads:nquads+nquads}),/did not independently receive/);
   assert.throws(()=>createSnapshotReceipt({...args,coverage:{...coverage,revision:"e".repeat(40)}}),/different source tree/);
+});
+
+test("two identical package manifests do not conceal a different projector implementation", async (t) => {
+  const temporary = mkdtempSync(join(tmpdir(), "glossary-producer-"));
+  t.after(() => rmSync(temporary, { recursive: true, force: true }));
+  cpSync(new URL("../package.json", import.meta.url), join(temporary, "package.json"));
+  cpSync(new URL("../src/", import.meta.url), join(temporary, "src"), { recursive: true });
+  const nativeCopy = await import(pathToFileURL(join(temporary, "src/snapshot-receipt.mjs")).href);
+  const original = observeWorkbench();
+  assert.deepEqual(nativeCopy.observeWorkbench(), original);
+  assert.ok(original.modules["src/read-reviewed-turtle.py"]);
+  const name = "src/project-glossary-dataset.mjs";
+  appendFileSync(join(temporary, name), "\n// Distinct projector fixture.\n");
+  const measured = nativeCopy.observeWorkbench();
+  assert.equal(measured.manifestSha256, original.manifestSha256);
+  assert.equal(measured.version, original.version);
+  assert.notEqual(measured.modules[name], original.modules[name]);
+  assert.deepEqual({ ...measured.modules, [name]: original.modules[name] }, original.modules);
 });
