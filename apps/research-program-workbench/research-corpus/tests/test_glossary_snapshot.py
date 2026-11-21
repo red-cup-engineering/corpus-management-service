@@ -9,7 +9,9 @@ import sys
 from tempfile import TemporaryDirectory
 import unittest
 
-from research_corpus.glossary_snapshot import compare_navigation, verify_owner_assertions
+from research_corpus.glossary_snapshot import (
+    LIMIT, SnapshotReceiver, compare_navigation, parse_nquads, verify_owner_assertions,
+)
 MANIFEST = "data/records/fixture-glossary.manifest.json"
 SNAPSHOT = "data/records/fixture-glossary.nq.gz"
 PROFILE = "data/schema/fixture-glossary-build.json"
@@ -142,6 +144,39 @@ class SnapshotGitEvidence(unittest.TestCase):
         self.commit("Revise other content")
         self.verify("prepare")
         self.verify("evidence")
+
+    def test_direct_reader_receives_the_prepared_named_graph(self):
+        self.verify("prepare")
+        receiver = SnapshotReceiver(self.root, PROFILE, MANIFEST, SNAPSHOT, OUTPUT)
+        dataset = receiver.load_prepared_dataset()
+        rows = list(dataset.query(
+            "SELECT ?definition WHERE { GRAPH <urn:fixture:vocab:graph:reviewed-vocabulary> "
+            "{ <urn:fixture:concept> <urn:fixture:definition> ?definition } }",
+            use_store_provided=False,
+        ))
+        self.assertEqual([str(row[0]) for row in rows], ["Original definition"])
+
+    def test_readers_refuse_different_prepared_bytes_before_replay(self):
+        self.verify("prepare")
+        receiver = SnapshotReceiver(self.root, PROFILE, MANIFEST, SNAPSHOT, OUTPUT)
+        prepared = self.root / OUTPUT
+        # A harmless trailing blank line preserves parsed RDF meaning; the
+        # receiver still owes exact byte identity to the prepared snapshot.
+        prepared.write_bytes(prepared.read_bytes() + b"\n")
+        failure = "Prepared glossary SHA-256 differs from its manifest"
+        missing_replay = self.root / "not-installed.mjs"
+        for verify in (receiver.load_prepared_dataset, receiver.verify_evidence,
+                       receiver.verify_authored, lambda: receiver.verify_navigation(missing_replay)):
+            with self.assertRaisesRegex(ValueError, failure):
+                verify()
+
+    def test_reader_refuses_an_oversized_prepared_dataset(self):
+        self.verify("prepare")
+        with (self.root / OUTPUT).open("r+b") as prepared:
+            prepared.truncate(LIMIT + 1)
+        receiver = SnapshotReceiver(self.root, PROFILE, MANIFEST, SNAPSHOT, OUTPUT)
+        with self.assertRaisesRegex(ValueError, "exceeds the dataset size limit"):
+            receiver.load_prepared_dataset()
 
     def test_dirty_worktree_profile_is_not_a_source_selector(self):
         self.write(PROFILE, "not even JSON")
@@ -416,7 +451,8 @@ class NavigationGraphReplay(unittest.TestCase):
         self.replay.write_text(self.raw_target + self.target, encoding="utf-8")
 
     def verify(self):
-        return compare_navigation(self.snapshot, self.replay, "urn:fixture:vocab:")
+        return compare_navigation(parse_nquads(self.snapshot.read_bytes()),
+                                  parse_nquads(self.replay.read_bytes()), "urn:fixture:vocab:")
 
     def test_compares_only_the_graphed_navigation_evidence(self):
         unrelated = f'<urn:fixture:concept> <urn:fixture:definition> "Reviewed" {REVIEWED_GRAPH} .\n'

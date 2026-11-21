@@ -102,7 +102,8 @@ class SnapshotReceiver:
         return manifest, profile, source
 
 
-    def prepare(self):
+    def validated_context(self):
+        """Admit the same source/profile and tracked inventory for every reader."""
         manifest, profile, source = self.source_context()
         artifact = manifest["artifact"]
         expected = manifest["source"]
@@ -134,6 +135,11 @@ class SnapshotReceiver:
             # changes to the bytes of files outside the selected Markdown glossary.
             if prior.keys() != current.keys() or glossary_catalog(prior, profile) != glossary_catalog(current, profile):
                 raise ValueError("Glossary snapshot is stale: glossary bytes or tracked content paths changed")
+        return manifest, profile, source
+
+    def prepare(self):
+        manifest, _, _ = self.validated_context()
+        artifact = manifest["artifact"]
         with self.selected(self.snapshot).open("rb") as compressed:
             if hashlib.file_digest(compressed, "sha256").hexdigest() != artifact["compressedSha256"]:
                 raise ValueError("Compressed glossary SHA-256 differs from its manifest")
@@ -147,14 +153,34 @@ class SnapshotReceiver:
             output.write(data)
 
 
+    def _read_prepared_dataset(self, manifest):
+        # Hash and parse one bounded byte buffer. A pathname read after the
+        # check would not necessarily read the bytes that passed it.
+        with self.selected(self.output).open("rb") as prepared:
+            data = prepared.read(LIMIT + 1)
+        if len(data) > LIMIT:
+            raise ValueError("Prepared glossary exceeds the dataset size limit")
+        if hashlib.sha256(data).hexdigest() != manifest["artifact"]["sha256"]:
+            raise ValueError("Prepared glossary SHA-256 differs from its manifest")
+        return parse_nquads(data)
+
+    def load_prepared_dataset(self):
+        """Load a digest-bound local Dataset after validating the selected Git sources.
+
+        This is byte and Git-input verification against the selected manifest,
+        not an attestation of that manifest or of any scientific claim.
+        """
+        manifest, _, _ = self.validated_context()
+        return self._read_prepared_dataset(manifest)
+
     def verify_evidence(self):
-        from rdflib import Dataset, Graph, Literal, RDF, URIRef
+        from rdflib import Graph, Literal, RDF, URIRef
         from rdflib.namespace import PROV
         from rdf_vocabulary_conformance import matches_named_graph
 
-        manifest, profile, source = self.source_context()
+        manifest, profile, source = self.validated_context()
         namespace = profile["namespace"]
-        dataset = Dataset(default_union=False).parse(self.selected(self.output), format="nquads")
+        dataset = self._read_prepared_dataset(manifest)
         reviewed_path = exact_path(profile["reviewedVocabulary"])
         reviewed = Graph().parse(
             data=git(self.root, "cat-file", "blob", source + ":" + reviewed_path),
@@ -207,9 +233,10 @@ class SnapshotReceiver:
 
 
     def verify_authored(self):
-        from rdflib import Dataset, URIRef
+        from rdflib import URIRef
 
-        _, profile, source = self.source_context()
+        manifest, profile, source = self.validated_context()
+        dataset = self._read_prepared_dataset(manifest)
         namespace = profile["namespace"]
         selected = glossary_catalog(content_catalog(self.root, source, profile), profile)
         authored_profile = exact_path(profile["authoredRelations"])
@@ -231,14 +258,14 @@ class SnapshotReceiver:
                 stderr=subprocess.PIPE, timeout=60, cwd=self.root,
             )
             report = json.loads(replay)
-        dataset = Dataset(default_union=False).parse(self.selected(self.output), format="nquads")
         count = verify_owner_assertions(dataset, namespace, documents, predicates, report)
         print(f"Verified {count} reviewed concept assertions and exact authored witnesses from pinned Git.")
 
 
     def verify_navigation(self, replay_entry):
         """Require exact equality with the native observation of pinned Markdown."""
-        manifest, profile, source = self.source_context()
+        manifest, profile, source = self.validated_context()
+        dataset = self._read_prepared_dataset(manifest)
         if manifest["coverage"].get("audience") != "authenticated":
             raise ValueError("Navigation replay requires the authenticated projection")
         # The caller supplies the installed Workbench entrypoint. Untrusted
@@ -252,9 +279,11 @@ class SnapshotReceiver:
             with output.open("xb") as replay:
                 subprocess.run(command, stdout=replay, stderr=subprocess.PIPE,
                                check=True, timeout=60, cwd=self.root)
-            if output.stat().st_size > LIMIT:
+            with output.open("rb") as replay:
+                expected = replay.read(LIMIT + 1)
+            if len(expected) > LIMIT:
                 raise ValueError("Native glossary navigation projection exceeds the dataset size limit")
-            count = compare_navigation(self.selected(self.output), output, profile["namespace"])
+            count = compare_navigation(dataset, parse_nquads(expected), profile["namespace"])
         print(f"Verified {count} navigation triples from pinned Git.")
 
 
@@ -280,16 +309,21 @@ def verify_term_statuses(document_graph, namespace, document_paths, coverage):
     return counts
 
 
-def compare_navigation(snapshot, replay, namespace):
+def parse_nquads(data):
+    """Parse the supplied UTF-8 bytes locally as separate named graphs."""
+    from rdflib import Dataset
+
+    return Dataset(default_union=False).parse(data=data.decode("utf-8"), format="nquads")
+
+
+def compare_navigation(actual, expected, namespace):
     """Compare the exact navigation named graph, not aggregate counts or the union."""
-    from rdflib import Dataset, URIRef
+    from rdflib import URIRef
     from rdf_vocabulary_conformance import matches_named_graph
 
     identifier = URIRef(namespace + "graph:navigation")
-    expected = Dataset(default_union=False).parse(replay, format="nquads")
     if any(g != identifier for _, _, _, g in expected.quads((None, None, None, None))):
         raise ValueError("Native glossary navigation replay must emit only its named graph")
-    actual = Dataset(default_union=False).parse(snapshot, format="nquads")
     reference = expected.graph(identifier)
     matches = (matches_named_graph(actual, identifier, reference) if len(reference)
                else len(actual.graph(identifier)) == 0)
