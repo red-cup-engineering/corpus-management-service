@@ -3,7 +3,7 @@ import { readTreeEntries } from "@red-cup-engineering/git-engine/git-command-cod
 import { readGitBlobObjectsSync } from "@red-cup-engineering/git-engine/pinned-source-files";
 import { readEvidenceBoundCommit } from "@red-cup-engineering/git-engine/source-path-proof";
 import { gitBlobIdOf } from "@red-cup-engineering/git-engine/git-object-id";
-import { safePath } from "./project-glossary-dataset.mjs";
+import { admitProfile, safePath } from "./project-glossary-navigation.mjs";
 
 const oidPattern = /^[a-f0-9]{40}$/u;
 const limits = {maxBytes:32*1024*1024,timeoutMs:60_000};
@@ -49,4 +49,21 @@ export function openPinnedGitSource(directory, revision) {
     return {path,oid:entry.object};
   }
   return Object.freeze({revision,tree,list,read,readTree,receive});
+}
+
+/** Read the profile, catalog, and selected Markdown from one native Git commit. */
+export function readPinnedGlossarySource({repository, revision, profilePath}) {
+  const source = openPinnedGitSource(repository, revision);
+  const sourceProfile = source.read(profilePath);
+  const text = new TextDecoder("utf-8", {fatal:true,ignoreBOM:true}).decode(sourceProfile.bytes);
+  const profile = admitProfile(JSON.parse(text));
+  const content = source.readTree(profile.contentRoot);
+  const entries = source.list(profile.contentRoot);
+  const glossary = entries.filter(e=>e.path.startsWith(profile.glossaryRoot+"/") && e.path.endsWith(".md"));
+  if (glossary.some(e=>!e.regular)) throw new Error("glossary contains a tracked nonregular Markdown source");
+  return {
+    source, sourceProfile, profile, content,
+    documents: source.receive(glossary),
+    contentPaths: entries.filter(e=>e.regular).map(e=>e.path),
+  };
 }

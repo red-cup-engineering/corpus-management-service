@@ -4,10 +4,12 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { sha256 } from "../src/snapshot-receipt.mjs";
 import { buildGlossaryDataset } from "../src/build-glossary-dataset.mjs";
 import { openPinnedGitSource } from "../src/git-source.mjs";
+import { replayGlossaryNavigation } from "../src/replay-glossary-navigation.mjs";
 import { admitProfile, projectGlossaryDataset } from "../src/project-glossary-dataset.mjs";
 
 const namespace = "urn:fixture:glossary:";
@@ -55,6 +57,32 @@ function fixture(t) {
   return {root, parent, write, commit, args:{repository:root,profile:profilePath,audience:"authenticated",output:join(parent,"accepted")}};
 }
 
+test("native navigation replay reads the exact Git cut, not a fabricated receiver observation", t=>{
+  const {root,write,commit}=fixture(t);
+  const revision=commit();
+  write(first,"[Invented destination](forged.md)\n");
+  const later=commit();
+  const path=fileURLToPath(new URL("../src/replay-glossary-navigation.mjs",import.meta.url));
+  const replay=(at)=>execFileSync(process.execPath,[path,"--repository",root,"--revision",at,
+    "--profile",profilePath,"--audience","authenticated"],{encoding:"utf8"});
+  const expected=replay(revision), afterEdit=replay(later);
+  const graph=`<${namespaceGraph}navigation> .`;
+  assert.ok(expected.trimEnd().split("\n").every(line=>line.endsWith(graph)));
+  const original=`<${vocabulary}rawTarget> "second.md" ${graph}`;
+  const falseWitness=`<${vocabulary}rawTarget> "forged.md" ${graph}`;
+  assert.ok(expected.includes(original));
+  assert.doesNotMatch(expected,/held\.md|forged\.md/u);
+  assert.ok(afterEdit.includes(falseWitness));
+  // A structurally valid replacement, with the same graph, observation IRI
+  // and asserted target, must differ from native replay of the selected cut.
+  const mutated=expected.replace(original,falseWitness);
+  assert.equal(mutated.split("\n").length,expected.split("\n").length);
+  assert.notEqual(mutated,replay(revision));
+  write(first,"A valid glossary document with no navigation.\n");
+  const linkless=commit();
+  assert.equal(replay(linkless),"");
+});
+
 test("native immutable Git → Workbench → RDF → independent named ASK and SHACL",async t=>{
   const {root,write,commit,args}=fixture(t);
   const revision=commit();
@@ -72,6 +100,9 @@ test("native immutable Git → Workbench → RDF → independent named ASK and S
   assert.equal(out.coverage.authoredObservations,1);
   assert.ok(bytes.includes(`<${concept}first> <${vocabulary}resultConcept> <${concept}second> <${namespaceGraph}authored-assertions>`));
   assert.ok(bytes.includes(`<${namespaceGraph}reviewed-vocabulary>`));
+  const replay = await replayGlossaryNavigation({...args,revision});
+  const navigation = bytes.split("\n").filter(line=>line.endsWith(` <${namespaceGraph}navigation> .`)).join("\n") + "\n";
+  assert.equal(replay,navigation);
   assert.ok(bytes.includes(`<${namespaceGraph}navigation>`));
   assert.ok(bytes.includes(`<${namespaceGraph}documents>`));
   assert.doesNotMatch(bytes,/worktree-only|held\.md|outside the audience/u);
@@ -88,7 +119,7 @@ test("native immutable Git → Workbench → RDF → independent named ASK and S
   assert.equal(receipt.artifact.quads,bytes.split("\n").length-1);
   assert.equal(gunzipSync(gzipBytes).toString("utf8"),bytes);
   const ownRuntime = ["src/build-glossary-dataset.mjs", "src/git-source.mjs",
-    "src/project-glossary-dataset.mjs", "src/read-reviewed-turtle.py", "src/snapshot-receipt.mjs"];
+    "src/project-glossary-dataset.mjs", "src/project-glossary-navigation.mjs", "src/read-reviewed-turtle.py", "src/snapshot-receipt.mjs"];
   assert.deepEqual(receipt.projectionProviders.workbench.modules, Object.fromEntries(
     ownRuntime.map((path) => [path, sha256(readFileSync(new URL("../" + path, import.meta.url)))]),
   ));

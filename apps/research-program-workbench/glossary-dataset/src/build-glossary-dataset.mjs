@@ -3,8 +3,9 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, w
 import { basename, dirname, isAbsolute, relative, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { admitProfile, projectGlossaryDataset, safePath } from "./project-glossary-dataset.mjs";
-import { openPinnedGitSource } from "./git-source.mjs";
+import { projectGlossaryDataset } from "./project-glossary-dataset.mjs";
+import { safePath } from "./project-glossary-navigation.mjs";
+import { readPinnedGlossarySource } from "./git-source.mjs";
 import { createSnapshotReceipt, observeNodeProviders } from "./snapshot-receipt.mjs";
 
 const decoder = new TextDecoder("utf-8", {fatal:true,ignoreBOM:true});
@@ -36,15 +37,8 @@ export async function buildGlossaryDataset({repository,revision,profile:profileP
   if (!relativeToSource || !isAbsolute(relativeToSource) && relativeToSource !== ".." && !relativeToSource.startsWith("../")) throw new Error("private output must be outside the source repository");
   if (existsSync(destination)) throw new Error("private output already exists");
   const providers = observeNodeProviders();
-  const source = openPinnedGitSource(repositoryRoot,revision);
-  const sourceProfile = source.read(safeRelative(profilePath));
-  const profile = admitProfile(json(sourceProfile.bytes));
-  const content = source.readTree(profile.contentRoot);
-  const entries = source.list(profile.contentRoot);
-  const glossary = entries.filter(e=>e.path.startsWith(profile.glossaryRoot+"/") && e.path.endsWith(".md"));
-  if (glossary.some(e=>!e.regular)) throw new Error("glossary contains a tracked nonregular Markdown source");
-  const documents = source.receive(glossary);
-  const contentPaths = entries.filter(e=>e.regular).map(e=>e.path);
+  const {source, sourceProfile, profile, content, documents, contentPaths} =
+    readPinnedGlossarySource({repository:repositoryRoot, revision, profilePath});
   const staging = mkdtempSync(join(outputParent,".glossary-pending-"));
   try {
     const work = join(staging,"source");

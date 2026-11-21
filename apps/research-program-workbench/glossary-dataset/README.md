@@ -76,7 +76,9 @@ inference, external traversal, or fragment-existence claim is made.
 ## Query navigation with source evidence
 
 The canonical navigation graph records each link occurrence, its source,
-original target spelling and resolution state. A verified or admitted target
+the canonical Markdown observer's target text and resolution state. For
+reference links this is the resolved Markdown destination, not necessarily a
+literal substring of the use site. A verified or admitted target
 is attached to the occurrence. A reader that needs document-to-target pairs
 can select distinct source/target pairs from these occurrences. They are not
 stored a second time as direct Dublin Core `references` triples. That would
@@ -92,7 +94,7 @@ After independent SHACL and ASK acceptance, the same build also writes
 directory. The manifest binds the raw and compressed digests, quad count,
 immutable Science source/content tree and exact input blobs, and the native
 conformance report. It records the application's own builder, projection,
-Git source reader, RDF helper and receipt modules, as well as the resolved
+Git source reader, navigation projector, RDF helper and receipt modules, as well as the resolved
 dependency entry-module and package manifest digests, Python entry-module
 digests, and native conformance/RDFLib versions. Two builds can produce the
 same graph with different code. A matching output does not make the measured
@@ -103,3 +105,26 @@ To receive a snapshot, commit the two generated files together in the
 Science repository and preserve the exact source commit in receiving
 history. Do not edit generated manifest digests or re-compress the bytes by
 hand. Running this builder does not push, deploy or make the data public.
+
+
+### Replay navigation against the pinned source
+
+After preparing the tracked snapshot, an environment with the qualified Node
+cohort can replay just the navigation named graph. Invoke the existing Python
+receiver, with the installed Workbench entrypoint supplied by the caller:
+
+    verify-glossary-snapshot navigation \
+      --root /absolute/path/to/science-repository \
+      --profile data/schema/glossary-build.json \
+      --manifest data/records/glossary.manifest.json \
+      --snapshot data/records/glossary.nq.gz \
+      --output build/glossary.nq \
+      --navigation-replay /absolute/path/to/glossary-dataset/src/replay-glossary-navigation.mjs
+
+The Node program reads the manifest's exact source commit as selected by the
+receiver and emits only the expected navigation graph. The receiver compares
+all its RDF statements, not just their count or target identities. A matching
+checksum alone does not authenticate an observation. This stage does not
+replay carrier assertions or replace SHACL, reviewed-vocabulary checks, or
+authored relation replay. It does not fetch objects or install packages. For the expected graph alone,
+run `npm run replay-navigation -- --repository PATH --revision SHA --profile FILE --audience authenticated`.

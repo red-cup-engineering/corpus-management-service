@@ -10,6 +10,7 @@ const workbenchModules = [
   "build-glossary-dataset.mjs",
   "git-source.mjs",
   "project-glossary-dataset.mjs",
+  "project-glossary-navigation.mjs",
   "read-reviewed-turtle.py",
   "snapshot-receipt.mjs",
 ];

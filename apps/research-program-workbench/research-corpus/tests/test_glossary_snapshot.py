@@ -9,7 +9,7 @@ import sys
 from tempfile import TemporaryDirectory
 import unittest
 
-from research_corpus.glossary_snapshot import verify_owner_assertions
+from research_corpus.glossary_snapshot import compare_navigation, verify_owner_assertions
 MANIFEST = "data/records/fixture-glossary.manifest.json"
 SNAPSHOT = "data/records/fixture-glossary.nq.gz"
 PROFILE = "data/schema/fixture-glossary-build.json"
@@ -365,6 +365,48 @@ class OwnerAssertionReplay(unittest.TestCase):
         for predicate, value in self.owner_properties:
             self.authored.add((duplicate, predicate, value))
         with self.assertRaisesRegex(ValueError, "witnesses differ"):
+            self.verify()
+
+
+class NavigationGraphReplay(unittest.TestCase):
+    def setUp(self):
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.snapshot = self.root / "snapshot.nq"
+        self.replay = self.root / "replay.nq"
+        self.raw_target = f'<urn:fixture:link:1> <{V}rawTarget> "claim.md" {NAVIGATION_GRAPH} .\n'
+        self.target = f'<urn:fixture:link:1> <{V}target> <urn:fixture:document:claim> {NAVIGATION_GRAPH} .\n'
+        self.replay.write_text(self.raw_target + self.target, encoding="utf-8")
+
+    def verify(self):
+        return compare_navigation(self.snapshot, self.replay, "urn:fixture:vocab:")
+
+    def test_compares_only_the_graphed_navigation_evidence(self):
+        unrelated = f'<urn:fixture:concept> <urn:fixture:definition> "Reviewed" {REVIEWED_GRAPH} .\n'
+        self.snapshot.write_text(self.target + unrelated + self.raw_target, encoding="utf-8")
+        self.assertEqual(self.verify(), 2)
+
+    def test_same_target_and_count_do_not_authenticate_an_invented_spelling(self):
+        self.snapshot.write_text(self.raw_target.replace("claim.md", "invented.md") + self.target,
+                                 encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "navigation differs"):
+            self.verify()
+
+    def test_empty_native_navigation_requires_an_empty_actual_navigation_graph(self):
+        self.replay.write_text("", encoding="utf-8")
+        other = f'<urn:fixture:concept> <urn:fixture:definition> "Reviewed" {REVIEWED_GRAPH} .\n'
+        self.snapshot.write_text(other, encoding="utf-8")
+        self.assertEqual(self.verify(), 0)
+        self.snapshot.write_text(other + self.raw_target, encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "navigation differs"):
+            self.verify()
+
+    def test_replay_must_not_emit_another_named_graph(self):
+        self.replay.write_text(self.target + self.raw_target.replace(NAVIGATION_GRAPH, REVIEWED_GRAPH),
+                               encoding="utf-8")
+        self.snapshot.write_text(self.target, encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "only its named graph"):
             self.verify()
 
 
