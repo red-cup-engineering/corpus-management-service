@@ -297,12 +297,39 @@ class SnapshotGitEvidence(unittest.TestCase):
     def test_added_path_stales_navigation_inventory(self):
         self.write("content/new.md", "A new exact link target\n")
         self.commit("Add target")
-        self.verify("prepare", failure="tracked content paths changed")
+        self.verify("prepare", failure="added regular content paths (1): 'content/new.md'")
 
     def test_glossary_content_edit_is_stale(self):
         self.write(DOCUMENT, "Changed glossary content\n")
         self.commit("Change glossary")
-        self.verify("prepare", failure="glossary bytes or tracked content paths changed")
+        self.verify("prepare", failure=f"changed glossary blobs (1): {DOCUMENT!r}")
+
+    def test_stale_catalog_reports_each_observed_change_without_guessing_rename(self):
+        self.write(DOCUMENT, "Changed glossary content\n")
+        (self.root / "content/other.md").rename(self.root / "content/replacement.md")
+        self.commit("Change glossary and content path")
+        receiver = SnapshotReceiver(self.root, PROFILE, MANIFEST, SNAPSHOT, OUTPUT)
+        with self.assertRaises(ValueError) as refusal:
+            receiver.prepare()
+        self.assertEqual(str(refusal.exception).splitlines(), [
+            "Glossary snapshot is stale: glossary bytes or tracked content paths changed",
+            f"changed glossary blobs (1): {DOCUMENT!r}",
+            "added regular content paths (1): 'content/replacement.md'",
+            "removed regular content paths (1): 'content/other.md'",
+        ])
+        self.assertFalse((self.root / OUTPUT).exists())
+
+    def test_stale_catalog_lists_a_sorted_sample_and_exact_omitted_count(self):
+        for index in reversed(range(10)):
+            self.write(f"content/target-{index}.md", "A new exact link target\n")
+        self.commit("Add content paths")
+        receiver = SnapshotReceiver(self.root, PROFILE, MANIFEST, SNAPSHOT, OUTPUT)
+        with self.assertRaises(ValueError) as refusal:
+            receiver.prepare()
+        sample = ", ".join(repr(f"content/target-{index}.md") for index in range(8))
+        self.assertEqual(str(refusal.exception).splitlines()[1:], [
+            f"added regular content paths (10): {sample} (+2 more)",
+        ])
 
     def test_glossary_symlink_is_not_admitted(self):
         (self.root / (GLOSSARY + "/link.md")).symlink_to("evidence (draft).md")
