@@ -101,6 +101,13 @@ same graph with different code. A matching output does not make the measured
 producer identities interchangeable. These measurements do not attest the
 entire dependency tree, a Git revision, or release authorization.
 
+Each evidence, authored, and navigation stage reads the prepared output
+within the size limit and parses only the same bytes whose SHA-256 matches
+the selected manifest. Python query consumers can use the same boundary
+with `SnapshotReceiver(...).load_prepared_dataset()` rather than opening
+the prepared path directly. This verifies the bytes and current pinned
+Git inputs; it does not sign the manifest or establish scientific truth.
+
 To receive a snapshot, commit the two generated files together in the
 Science repository and preserve the exact source commit in receiving
 history. Do not edit generated manifest digests or re-compress the bytes by
