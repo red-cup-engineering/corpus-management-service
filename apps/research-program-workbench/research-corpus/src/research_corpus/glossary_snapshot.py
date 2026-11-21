@@ -180,6 +180,7 @@ class SnapshotReceiver:
             raise ValueError("RDF quad count differs from the committed projection manifest")
         base = "https://github.com/" + profile["repository"] + "/blob/"
         seen = set()
+        document_paths = {}
         for document in documents:
             paths = set(graph.objects(document, predicates["path"]))
             if len(paths) != 1 or not isinstance(path := next(iter(paths)), Literal):
@@ -188,6 +189,7 @@ class SnapshotReceiver:
             if name not in catalog or name in seen:
                 raise ValueError(f"RDF document does not identify one original glossary path: {name}")
             seen.add(name)
+            document_paths[document] = name
             # Match the Workbench's per-segment encodeURIComponent spelling.
             encoded = quote(name, safe="/!~*'()")
             if (document != URIRef(base + "main/" + encoded)
@@ -200,6 +202,7 @@ class SnapshotReceiver:
             raise ValueError(f"RDF document graph omits {len(missing)} pinned glossary path(s); first: {example}")
         if not documents:
             raise ValueError("The authenticated glossary must contain documents")
+        verify_term_statuses(graph, namespace, document_paths, coverage)
         print(f"Verified {quads} quads, {len(reviewed)} reviewed triples, and all {len(catalog)} pinned glossary documents.")
 
 
@@ -253,6 +256,28 @@ class SnapshotReceiver:
                 raise ValueError("Native glossary navigation projection exceeds the dataset size limit")
             count = compare_navigation(self.selected(self.output), output, profile["namespace"])
         print(f"Verified {count} navigation triples from pinned Git.")
+
+
+def verify_term_statuses(document_graph, namespace, document_paths, coverage):
+    """Bind document status rows to the inventory and receipt without replaying Term."""
+    from rdflib import Literal, URIRef
+
+    predicate = URIRef(namespace + "glossary-vocabulary:termSchemaStatus")
+    if set(document_graph.subjects(predicate)) - document_paths.keys():
+        raise ValueError("RDF term status identifies a subject outside the document inventory")
+    counts = {"admitted": 0, "not-admitted": 0, "not-a-term-carrier": 0}
+    for document, name in document_paths.items():
+        statuses = set(document_graph.objects(document, predicate))
+        # The native projector classifies the exact basename README.md as an index.
+        allowed = ({"not-a-term-carrier"} if name.rsplit("/", 1)[-1] == "README.md"
+                   else {"admitted", "not-admitted"})
+        if len(statuses) != 1 or not any(Literal(status) in statuses for status in allowed):
+            raise ValueError(f"RDF document lacks one valid Term admission status: {name}")
+        counts[str(next(iter(statuses)))] += 1
+    for field, status in (("termSchemaAdmitted", "admitted"), ("termSchemaNotAdmitted", "not-admitted")):
+        if type(coverage.get(field)) is not int or coverage[field] != counts[status]:
+            raise ValueError(f"RDF term status count differs from the committed projection manifest: {field}")
+    return counts
 
 
 def compare_navigation(snapshot, replay, namespace):

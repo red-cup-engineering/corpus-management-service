@@ -19,6 +19,7 @@ GLOSSARY = "content/text/glossary"
 DOCUMENT = GLOSSARY + "/evidence (draft).md"
 DOCUMENT_IRI_PATH = GLOSSARY + "/evidence%20(draft).md"
 SECOND_DOCUMENT = GLOSSARY + "/other.md"
+INDEX_DOCUMENT = GLOSSARY + "/README.md"
 BASE = "https://github.com/fixture/corpus/blob/"
 V = "urn:fixture:vocab:glossary-vocabulary:"
 REVIEWED_GRAPH = "<urn:fixture:vocab:graph:reviewed-vocabulary>"
@@ -36,6 +37,7 @@ class SnapshotGitEvidence(unittest.TestCase):
         self.git("config", "user.name", "Fixture")
         self.write(DOCUMENT, "Original glossary bytes\n")
         self.write(SECOND_DOCUMENT, "Second glossary entry\n")
+        self.write(INDEX_DOCUMENT, "Glossary index\n")
         self.write("content/other.md", "Other content\n")
         self.write("research.toml", 'program = "test"\n')
         self.write("data/schema/reviewed.ttl",
@@ -62,7 +64,8 @@ class SnapshotGitEvidence(unittest.TestCase):
         self.record = {
             "formatVersion": 1,
             "artifact": {"path": SNAPSHOT},
-            "coverage": {"audience": "authenticated", "trackedGlossaryMarkdown": 2, "projectedDocuments": 2},
+            "coverage": {"audience": "authenticated", "trackedGlossaryMarkdown": 3, "projectedDocuments": 3,
+                         "termSchemaAdmitted": 1, "termSchemaNotAdmitted": 1},
             "source": {"commit": self.source, "contentTree": self.git("rev-parse", "HEAD:content"),
                        "inputs": {name: self.git("rev-parse", "HEAD:" + name) for name in names}},
         }
@@ -85,9 +88,12 @@ class SnapshotGitEvidence(unittest.TestCase):
         self.git("commit", "-qm", message)
 
     def dataset(self, provenance, *, definition="Original definition", definition_graph=REVIEWED_GRAPH,
-                omit_second=False, extra_quad=False):
+                omit_second=False, extra_quad=False, statuses=None, extra_status_subject=None):
         graph = "<urn:fixture:vocab:graph:documents>"
-        paths = [(DOCUMENT, DOCUMENT_IRI_PATH)]
+        paths = [(DOCUMENT, DOCUMENT_IRI_PATH), (INDEX_DOCUMENT, INDEX_DOCUMENT)]
+        selected_statuses = {DOCUMENT: ('"admitted"',), SECOND_DOCUMENT: ('"not-admitted"',),
+                             INDEX_DOCUMENT: ('"not-a-term-carrier"',)}
+        selected_statuses.update(statuses or {})
         if not omit_second:
             paths.append((SECOND_DOCUMENT, SECOND_DOCUMENT))
         self.record["coverage"]["projectedDocuments"] = len(paths)
@@ -100,6 +106,10 @@ class SnapshotGitEvidence(unittest.TestCase):
                 ("<" + V + "path>", json.dumps(path)), ("<" + V + "gitBlob>", json.dumps(blob)),
                 ("<http://www.w3.org/ns/prov#wasDerivedFrom>", "<" + BASE + provenance + "/" + encoded + ">"),
             ))
+            rows.extend(f"{doc} <{V}termSchemaStatus> {value} {graph} ."
+                        for value in selected_statuses[path])
+        if extra_status_subject is not None:
+            rows.append(f'{extra_status_subject} <{V}termSchemaStatus> "admitted" {graph} .')
         data = ("\n".join(rows) + "\n").encode()
         # Intentionally use a different blank-node label from the original Turtle source.
         data += (
@@ -176,6 +186,30 @@ class SnapshotGitEvidence(unittest.TestCase):
         self.dataset(self.source, omit_second=True)
         self.verify("prepare")
         self.verify("evidence", failure=f"omits 1 pinned glossary path(s); first: {SECOND_DOCUMENT}")
+
+    def test_rehashed_same_size_false_status_disagrees_with_receipt(self):
+        self.dataset(self.source, statuses={DOCUMENT: ('"not-admitted"',)})
+        self.verify("prepare")
+        self.verify("evidence", failure="differs from the committed projection manifest: termSchemaAdmitted")
+
+    def test_rehashed_second_status_cannot_amplify_saved_query_rows(self):
+        self.dataset(self.source, statuses={DOCUMENT: ('"admitted"', '"not-admitted"')})
+        self.verify("prepare")
+        self.verify("evidence", failure="lacks one valid Term admission status")
+
+    def test_rehashed_wrong_kind_missing_status_or_non_plain_value(self):
+        for path, value in ((INDEX_DOCUMENT, ('"admitted"',)), (DOCUMENT, ()),
+                            (DOCUMENT, ('"admitted"@en',)), (DOCUMENT, ('<urn:fixture:admitted>',))):
+            with self.subTest(path=path, value=value):
+                self.dataset(self.source, statuses={path: value})
+                self.verify("prepare")
+                self.verify("evidence", failure="lacks one valid Term admission status")
+                (self.root / OUTPUT).unlink()
+
+    def test_rogue_status_subject_is_not_a_document(self):
+        self.dataset(self.source, extra_status_subject="<urn:fixture:rogue>")
+        self.verify("prepare")
+        self.verify("evidence", failure="outside the document inventory")
 
     def test_dataset_counts_quads_not_union_triples(self):
         # A triple asserted in two named graphs counts as two quads.
@@ -271,6 +305,7 @@ class AlternateProfileReceiving(unittest.TestCase):
                 lines.extend(f"{uri} <{pred}> {value} {graph} ." for pred, value in (
                     ("http://www.w3.org/1999/02/22-rdf-syntax-ns#type", "<https://schema.org/DigitalDocument>"),
                     (v + "path", json.dumps(path)), (v + "gitBlob", json.dumps(git("rev-parse", src + ":" + path))),
+                    (v + "termSchemaStatus", '"admitted"' if path == paths[0] else '"not-admitted"'),
                     ("http://www.w3.org/ns/prov#wasDerivedFrom", f"<{base}{src}/{path}>"),
                 ))
             raw = ("\n".join(lines) + "\n").encode()
@@ -280,7 +315,8 @@ class AlternateProfileReceiving(unittest.TestCase):
                 "formatVersion": 1,
                 "artifact": {"path": snapshot, "sha256": hashlib.sha256(raw).hexdigest(),
                              "compressedSha256": hashlib.sha256(packed).hexdigest(), "quads": len(lines)},
-                "coverage": {"audience": "authenticated", "trackedGlossaryMarkdown": 2, "projectedDocuments": 2},
+                "coverage": {"audience": "authenticated", "trackedGlossaryMarkdown": 2, "projectedDocuments": 2,
+                             "termSchemaAdmitted": 1, "termSchemaNotAdmitted": 1},
                 "source": {"commit": src, "contentTree": git("rev-parse", src + ":notebooks"),
                            "inputs": {name: git("rev-parse", src + ":" + name)
                                       for name in (profile, authored, config, "research.toml", "settings/review.ttl")}},
