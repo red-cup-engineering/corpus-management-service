@@ -8,7 +8,8 @@ import { canonicalizeNQuads } from "@red-cup-engineering/computer-triplet-serial
 
 import { documentIri, hash, prepareGlossaryNavigation, projectGlossaryNavigation, sourcePredicates } from "./project-glossary-navigation.mjs";
 
-export { admitProfile, blobDigest, safePath } from "./project-glossary-navigation.mjs";
+export { blobDigest } from "./project-glossary-navigation.mjs";
+export { admitProfile, safePath } from "./git-source.mjs";
 const fieldName = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const namespace = {
   ...sourcePredicates,

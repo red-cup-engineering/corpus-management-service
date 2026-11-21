@@ -9,6 +9,8 @@ import { projectMarkdownLinkPath, parseMarkdownLinkDestination } from "@red-cup-
 import { glossaryAudienceAdmits } from "@red-cup-engineering/term-engineering-services-section/glossary-skos";
 import { iriTerm, literal } from "@red-cup-engineering/computer-triplet-serialized-content-engineering-services-section/rdf-terms";
 
+import { admitProfile, safePath } from "./git-source.mjs";
+
 const sha1 = /^[a-f0-9]{40}$/u;
 export const hash = (...args) => createHash("sha256").update(JSON.stringify(args)).digest("hex");
 export const sourcePredicates = {
@@ -18,23 +20,7 @@ export const sourcePredicates = {
 export function documentIri(repository, path, revision = "main") {
   return "https://github.com/" + repository + "/blob/" + revision + "/" + path.split("/").map(encodeURIComponent).join("/");
 }
-export function safePath(path) {
-  return typeof path === "string" && !/[\\\u0000-\u001f\u007f]/u.test(path)
-    && path.split("/").every((part) => part.length && part !== "." && part !== ".." && part !== ".git");
-}
 export const blobDigest = gitBlobIdOf;
-export function admitProfile(profile) {
-  const keys = ["formatVersion", "repository", "namespace", "contentRoot", "glossaryRoot", "reviewedVocabulary", "authoredRelations", "datasetConformance"];
-  if (!profile || Object.keys(profile).sort().join() !== keys.sort().join() || profile.formatVersion !== 1
-      || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(profile.repository)
-      || !/^urn:[A-Za-z0-9][A-Za-z0-9-]*:[A-Za-z0-9:._-]+:$/u.test(profile.namespace)
-      || [profile.contentRoot, profile.glossaryRoot, profile.reviewedVocabulary, profile.authoredRelations, profile.datasetConformance].some((p) => !safePath(p))
-      || profile.glossaryRoot !== profile.contentRoot + "/text/glossary"
-      || !profile.reviewedVocabulary.endsWith(".ttl")
-      || !profile.authoredRelations.endsWith(".json")
-      || !profile.datasetConformance.endsWith(".json")) throw new TypeError("invalid Science glossary dataset profile");
-  return profile;
-}
 
 /** Verify, decode, and admit the exact input catalog used by builder and replay. */
 export function prepareGlossaryNavigation({profile, revision, tree, documents, contentPaths, audience}) {
