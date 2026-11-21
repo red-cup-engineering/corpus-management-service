@@ -233,6 +233,46 @@ class SnapshotReceiver:
         print(f"Verified {count} reviewed concept assertions and exact authored witnesses from pinned Git.")
 
 
+    def verify_navigation(self, replay_entry):
+        """Require exact equality with the native observation of pinned Markdown."""
+        manifest, profile, source = self.source_context()
+        if manifest["coverage"].get("audience") != "authenticated":
+            raise ValueError("Navigation replay requires the authenticated projection")
+        # The caller supplies the installed Workbench entrypoint. Untrusted
+        # glossary data only supplies the source commit already admitted above.
+        command = [
+            "node", str(replay_entry.resolve(strict=True)), "--repository", str(self.root),
+            "--revision", source, "--profile", self.profile, "--audience", "authenticated",
+        ]
+        with TemporaryDirectory(prefix="glossary-navigation-replay-") as temporary:
+            output = Path(temporary) / "navigation.nq"
+            with output.open("xb") as replay:
+                subprocess.run(command, stdout=replay, stderr=subprocess.PIPE,
+                               check=True, timeout=60, cwd=self.root)
+            if output.stat().st_size > LIMIT:
+                raise ValueError("Native glossary navigation projection exceeds the dataset size limit")
+            count = compare_navigation(self.selected(self.output), output, profile["namespace"])
+        print(f"Verified {count} navigation triples from pinned Git.")
+
+
+def compare_navigation(snapshot, replay, namespace):
+    """Compare the exact navigation named graph, not aggregate counts or the union."""
+    from rdflib import Dataset, URIRef
+    from rdf_vocabulary_conformance import matches_named_graph
+
+    identifier = URIRef(namespace + "graph:navigation")
+    expected = Dataset(default_union=False).parse(replay, format="nquads")
+    if any(g != identifier for _, _, _, g in expected.quads((None, None, None, None))):
+        raise ValueError("Native glossary navigation replay must emit only its named graph")
+    actual = Dataset(default_union=False).parse(snapshot, format="nquads")
+    reference = expected.graph(identifier)
+    matches = (matches_named_graph(actual, identifier, reference) if len(reference)
+               else len(actual.graph(identifier)) == 0)
+    if not matches:
+        raise ValueError("RDF navigation differs from the pinned Workbench replay")
+    return len(reference)
+
+
 def verify_owner_assertions(dataset, namespace, documents, predicates, report):
     """Compare only the reviewed concept assertions and their raw witnesses."""
     from rdflib import Literal, RDF, URIRef
@@ -294,16 +334,23 @@ def verify_owner_assertions(dataset, namespace, documents, predicates, report):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("stage", choices=("prepare", "evidence", "authored"))
+    parser.add_argument("stage", choices=("prepare", "evidence", "authored", "navigation"))
     parser.add_argument("--root", default=Path.cwd(), type=Path, help="receiving Git worktree")
     for name in ("profile", "manifest", "snapshot", "output"):
         parser.add_argument("--" + name, required=True, type=exact_path, help="exact repository-relative path")
+    parser.add_argument("--navigation-replay", type=Path,
+                        help="installed Workbench replay-glossary-navigation.mjs entrypoint")
     args = parser.parse_args(argv)
+    if (args.stage == "navigation") != (args.navigation_replay is not None):
+        parser.error("--navigation-replay is required for, and only valid with, the navigation stage")
     try:
         receiver = SnapshotReceiver(args.root.resolve(strict=True), args.profile, args.manifest,
                                     args.snapshot, args.output)
-        {"prepare": receiver.prepare, "evidence": receiver.verify_evidence,
-         "authored": receiver.verify_authored}[args.stage]()
+        if args.stage == "navigation":
+            receiver.verify_navigation(args.navigation_replay)
+        else:
+            {"prepare": receiver.prepare, "evidence": receiver.verify_evidence,
+             "authored": receiver.verify_authored}[args.stage]()
     except subprocess.CalledProcessError as error:
         parser.exit(1, f"Cannot verify pinned glossary source: {error.stderr.decode(errors='replace').strip()}\n")
     except (KeyError, TypeError, ValueError, OSError, subprocess.TimeoutExpired) as error:
