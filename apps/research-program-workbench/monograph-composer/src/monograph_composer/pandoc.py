@@ -40,7 +40,7 @@ def unresolved_citations(composed: str, bibliography: str | None) -> tuple[str, 
     return tuple(sorted(requested - available))
 
 
-def run(composed: Path, bib: Path | None, output: Path) -> None:
+def run(composed: str, bib: Path | None, output: Path) -> None:
     """Run pandoc, write final monograph to `output`.
 
     When `bib` is provided and the file exists, --citeproc + --bibliography
@@ -49,7 +49,7 @@ def run(composed: Path, bib: Path | None, output: Path) -> None:
     """
     has_bib = bib is not None and bib.is_file()
     cmd = [
-        "pandoc", str(composed),
+        "pandoc",
         # Disable auto-id generation so internal headings ("Proof", "Remark",
         # …) don't auto-slugify into the same identifier as a real anchored
         # note and shadow the explicit `{#slug}` anchor.
@@ -60,7 +60,7 @@ def run(composed: Path, bib: Path | None, output: Path) -> None:
     ]
     if has_bib:
         cmd[-2:-2] = ["--citeproc", "--bibliography", str(bib)]
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, input=composed, encoding="utf-8", check=True)
     if has_bib:
         # Pandoc 3.1 emits the bibliography heading at H1 regardless of
         # `reference-section-level`; demote to H3 so it nests inside Supplements.
