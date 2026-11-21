@@ -153,8 +153,22 @@ class SnapshotReceiver:
             current = content_catalog(self.root, receiving, profile)
             # Link presence depends on the names of regular content files, not
             # changes to the bytes of files outside the selected Markdown glossary.
-            if prior.keys() != current.keys() or glossary_catalog(prior, profile) != glossary_catalog(current, profile):
-                raise ValueError("Glossary snapshot is stale: glossary bytes or tracked content paths changed")
+            prior_glossary = glossary_catalog(prior, profile)
+            current_glossary = glossary_catalog(current, profile)
+            changed = {name for name in prior_glossary.keys() & current_glossary.keys()
+                       if prior_glossary[name] != current_glossary[name]}
+            categories = (("changed glossary blobs", changed),
+                          ("added regular content paths", current.keys() - prior.keys()),
+                          ("removed regular content paths", prior.keys() - current.keys()))
+            if any(paths for _, paths in categories):
+                detail = ["Glossary snapshot is stale: glossary bytes or tracked content paths changed"]
+                for label, paths in categories:
+                    if paths:
+                        sample = sorted(paths)[:8]
+                        shown = ", ".join(repr(path) for path in sample)
+                        more = f" (+{len(paths) - len(sample)} more)" if len(paths) > len(sample) else ""
+                        detail.append(f"{label} ({len(paths)}): {shown}{more}")
+                raise ValueError("\n".join(detail))
         return manifest, profile, source
 
     def prepare(self):
