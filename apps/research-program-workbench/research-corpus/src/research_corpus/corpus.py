@@ -66,12 +66,25 @@ class Corpus:
         return self.config.bib_path
 
 
+def _is_explicit_file(root: Path, relative: Path) -> bool:
+    """An exact member must not traverse a linked component below the root."""
+    current = root
+    try:
+        for component in relative.parts:
+            current = current / component
+            if current.is_symlink():
+                return False
+        return current.is_file()
+    except OSError:
+        return False
+
+
 def load(root: Path | None = None, *, config: ProgramConfig | None = None) -> Corpus:
     """Load a corpus from `root`. If `config` is omitted, read research.toml from `root`.
 
-    Walks each configured lib_dir, parses every `.md` (skipping README.md), and
-    indexes notes by slug. Parse failures are recorded as Diagnostics rather
-    than raised — the caller decides how to surface them.
+    Reads shallow library directories (skipping README.md) and exact configured
+    files without recursion. Paths are parsed once and indexed by slug.
+    Parse failures are recorded as Diagnostics rather than raised.
     """
     if config is None:
         if root is None:
@@ -83,6 +96,69 @@ def load(root: Path | None = None, *, config: ProgramConfig | None = None) -> Co
 
     notes: dict[str, Note] = {}
     parse_errors: list[Diagnostic] = []
+
+    explicit = {Path(item.path): item.default_kind for item in config.files}
+    seen: set[Path] = set()
+
+    def admit(rel: Path, directory: str, default_kind: str) -> None:
+        if rel in seen:
+            return
+        seen.add(rel)
+        if rel in explicit:
+            if not _is_explicit_file(root, rel):
+                parse_errors.append(Diagnostic(
+                    code="corpus-file",
+                    severity="error",
+                    path=rel,
+                    message="configured corpus file is missing, linked, or not a regular file",
+                ))
+                return
+            default_kind = explicit[rel]
+        try:
+            fm, body, body_start_line = parse_file_with_body_line(root / rel)
+        except FrontmatterError as e:
+            parse_errors.append(Diagnostic(
+                code="frontmatter-parse",
+                severity="error",
+                path=rel,
+                message=str(e),
+            ))
+            return
+        # Science notes declare `type`; the recovered toolkit also accepts
+        # its original `kind`. Conflicting declarations need source repair.
+        declared_type = fm.get("type")
+        legacy_kind = fm.get("kind")
+        kind = declared_type if declared_type is not None else legacy_kind
+        if kind is None:
+            kind = default_kind
+        if (not isinstance(kind, str) or not kind.strip()
+                or (declared_type is not None and legacy_kind is not None
+                    and declared_type != legacy_kind)):
+            parse_errors.append(Diagnostic(
+                code="frontmatter-kind",
+                severity="error",
+                path=rel,
+                message="type and kind must be nonempty strings and agree when both are present",
+            ))
+            return
+        slug = rel.stem
+        if slug in notes:
+            parse_errors.append(Diagnostic(
+                code="slug-collision",
+                severity="error",
+                path=rel,
+                message=f"slug `{slug}` already declared by {notes[slug].path}",
+            ))
+            return
+        notes[slug] = Note(
+            slug=slug,
+            dir=directory,
+            kind=kind,
+            fm=fm,
+            body=body,
+            path=rel,
+            body_start_line=body_start_line,
+        )
 
     for d in config.lib_dirs:
         dir_path = root / d
@@ -97,54 +173,12 @@ def load(root: Path | None = None, *, config: ProgramConfig | None = None) -> Co
         if not dir_path.is_dir():
             continue
         for p in sorted(dir_path.glob("*.md")):
-            if p.name == "README.md" or p.is_symlink():
-                continue
-            rel = p.relative_to(root)
-            try:
-                fm, body, body_start_line = parse_file_with_body_line(p)
-            except FrontmatterError as e:
-                parse_errors.append(Diagnostic(
-                    code="frontmatter-parse",
-                    severity="error",
-                    path=rel,
-                    message=str(e),
-                ))
-                continue
-            # Science notes declare `type`; the recovered toolkit also accepts
-            # its original `kind`. Conflicting declarations need source repair.
-            declared_type = fm.get("type")
-            legacy_kind = fm.get("kind")
-            kind = declared_type if declared_type is not None else legacy_kind
-            if kind is None:
-                kind = Path(d).name.rstrip("s")
-            if (not isinstance(kind, str) or not kind.strip()
-                    or (declared_type is not None and legacy_kind is not None
-                        and declared_type != legacy_kind)):
-                parse_errors.append(Diagnostic(
-                    code="frontmatter-kind",
-                    severity="error",
-                    path=rel,
-                    message="type and kind must be nonempty strings and agree when both are present",
-                ))
-                continue
-            slug = p.stem
-            if slug in notes:
-                parse_errors.append(Diagnostic(
-                    code="slug-collision",
-                    severity="error",
-                    path=rel,
-                    message=f"slug `{slug}` already declared by {notes[slug].path}",
-                ))
-                continue
-            notes[slug] = Note(
-                slug=slug,
-                dir=d,
-                kind=kind,
-                fm=fm,
-                body=body,
-                path=rel,
-                body_start_line=body_start_line,
-            )
+            if p.name != "README.md" and not p.is_symlink():
+                rel = p.relative_to(root)
+                admit(rel, d, Path(d).name.rstrip("s"))
+
+    for path, default_kind in explicit.items():
+        admit(path, path.parent.as_posix(), default_kind)
 
     bib_keys = parse_bib_keys(config.bib_path)
 

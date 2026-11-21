@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import tomllib
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 CONFIG_FILENAME = "research.toml"
 
@@ -65,6 +65,35 @@ def _vocabulary_config(value: object) -> VocabularyConfig | None:
     )
 
 
+@dataclass(frozen=True)
+class CorpusFile:
+    path: str
+    default_kind: str
+
+    def __post_init__(self) -> None:
+        path = PurePosixPath(self.path) if isinstance(self.path, str) else PurePosixPath()
+        if (not path.parts or path.is_absolute() or path.as_posix() != self.path
+                or any(part.startswith(".") for part in path.parts) or path.suffix != ".md"
+                or PureWindowsPath(self.path).drive or path.name == "README.md"
+                or "\\" in self.path or any(ord(c) < 32 or ord(c) == 127 for c in self.path)):
+            raise ValueError("corpus.files path must be an exact nonhidden root-relative research .md path (not README.md)")
+        if (not isinstance(self.default_kind, str) or not self.default_kind
+                or self.default_kind != self.default_kind.strip()
+                or any(ord(c) < 32 or ord(c) == 127 for c in self.default_kind)):
+            raise ValueError("corpus.files default_kind must be a nonempty plain string")
+
+
+def _corpus_files(value: object) -> tuple[CorpusFile, ...]:
+    if not isinstance(value, list):
+        raise ValueError("corpus.files must be an array of tables")
+    files = []
+    for item in value:
+        if not isinstance(item, dict) or set(item) != {"path", "default_kind"}:
+            raise ValueError("each corpus.files entry requires exactly path and default_kind")
+        files.append(CorpusFile(path=item["path"], default_kind=item["default_kind"]))
+    return tuple(files)
+
+
 @dataclass
 class ProgramConfig:
     root: Path
@@ -75,6 +104,17 @@ class ProgramConfig:
     plan: PlanConfig = field(default_factory=PlanConfig)
     audit: AuditConfig = field(default_factory=AuditConfig)
     vocabulary: VocabularyConfig | None = None
+    files: tuple[CorpusFile, ...] = ()
+
+    def __post_init__(self) -> None:
+        by_path: dict[str, CorpusFile] = {}
+        for item in self.files:
+            if not isinstance(item, CorpusFile):
+                raise ValueError("corpus.files requires CorpusFile selections")
+            previous = by_path.setdefault(item.path, item)
+            if previous.default_kind != item.default_kind:
+                raise ValueError(f"conflicting corpus.files defaults for {item.path}")
+        self.files = tuple(by_path[path] for path in sorted(by_path))
 
     @property
     def bib_path(self) -> Path:
@@ -141,4 +181,5 @@ def load_config(root: Path) -> ProgramConfig:
             output=audit.get("output", "tools/build/dependency-audit.md"),
         ),
         vocabulary=_vocabulary_config(data.get("vocabulary")),
+        files=_corpus_files(corpus.get("files", [])),
     )

@@ -114,6 +114,33 @@ An archival namesake is not the live source.
         self.assertEqual(json.loads(reduced.stdout)["baseline"]["scope"]["removed_note_paths"],
                          [f"{LESSONS}/method.md"])
 
+    def test_explicit_note_enrollment_is_compared_as_scope_and_missing_is_hard(self):
+        baseline = self.root.parent / "baseline"
+        path = "content/text/documents/articles/notes/2026/02/03/selected.md"
+        self.write(path, "---\ntitle: Selected note\n---\n\nAn explicitly enrolled source.\n")
+        self.write("content/text/documents/articles/notes/2026/02/03/unselected.md",
+                   "---\ntitle: Not in this corpus\n---\n\nSource from another scope.\n")
+        config = self.root / "research.toml"
+        with config.open("a", encoding="utf-8") as target:
+            target.write(f'\n[[corpus.files]]\npath = "{path}"\ndefault_kind = "note"\n')
+        shutil.copytree(self.root, baseline)
+        config.write_text(config.read_text(encoding="utf-8").replace('default_kind = "note"',
+                                                                     'default_kind = "narrative"'),
+                          encoding="utf-8")
+        result = self.run_cli("program_validator", "--no-lean", "--format", "json",
+                              "--baseline-root", str(baseline))
+        wire = json.loads(result.stdout)
+        self.assertEqual(wire["total_notes"], 3)
+        self.assertEqual(wire["baseline"]["scope"], {
+            "different_inputs": ["files"], "added_note_paths": [], "removed_note_paths": []})
+        (self.root / path).unlink()
+        missing = self.run_cli("program_validator", "--no-lean", "--format", "json",
+                               "--baseline-root", str(baseline))
+        self.assertEqual(missing.returncode, 1, missing.stderr)
+        wire = json.loads(missing.stdout)
+        self.assertEqual(wire["baseline"]["scope"]["removed_note_paths"], [path])
+        self.assertEqual([d["path"] for d in wire["diagnostics"] if d["code"] == "corpus-file"], [path])
+
     def test_ls2_native_reader_receives_nested_source_note(self):
         result = self.run_cli("monograph_composer")
         self.assertEqual(result.returncode, 0, result.stderr)
