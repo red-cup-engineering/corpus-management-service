@@ -123,7 +123,20 @@ test("native immutable Git → Workbench → RDF → independent named ASK and S
   assert.deepEqual(receipt.projectionProviders.workbench.modules, Object.fromEntries(
     ownRuntime.map((path) => [path, sha256(readFileSync(new URL("../" + path, import.meta.url)))]),
   ));
-  assert.equal(receipt.projectionProviders.markdown.version,"0.6.0-dev.0");
+  const applicationManifest = readFileSync(new URL("../package.json", import.meta.url));
+  assert.equal(receipt.projectionProviders.workbench.manifestSha256, sha256(applicationManifest));
+  const { dependencies } = JSON.parse(applicationManifest);
+  const providerPackages = {
+    gitEngine: "@red-cup-engineering/git-engine",
+    markdown: "@red-cup-engineering/markdown-engineering-services-section",
+    term: "@red-cup-engineering/term-engineering-services-section",
+    tripletSerialization: "@red-cup-engineering/computer-triplet-serialized-content-engineering-services-section",
+  };
+  for (const [role, name] of Object.entries(providerPackages)) {
+    assert.ok(Object.hasOwn(dependencies, name));
+    assert.equal(receipt.projectionProviders[role].name, name);
+    assert.equal(receipt.projectionProviders[role].version, dependencies[name]);
+  }
   assert.match(receipt.projectionProviders.markdown.modules["derive-markdown-vault-graph"],/^[a-f0-9]{64}$/u);
   assert.equal(receipt.projectionProviders.researchCorpus.module,"research_corpus.vocabulary");
   assert.deepEqual(receipt.conformance,received);
