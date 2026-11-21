@@ -28,6 +28,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "24"
+      - name: Qualify the tracked glossary snapshot receipt
+        run: node --test apps/research-program-workbench/glossary-dataset/tests/snapshot-receipt.test.mjs
       - name: Receive the original pinned question recorder from the canonical registry
         shell: bash
         env:

@@ -8,6 +8,11 @@ claim or classifies all glossary notes as reviewed concepts.
 
 ## Runtime and inputs
 
+- GNU gzip. The tracked artifact uses `gzip -n -9 -c` (qualified with
+  1.13); the receipt records the encoder version and arguments. For exact
+  compressed-byte reproduction use the same encoder. No local checkout path
+  or wall-clock timestamp enters the receipt.
+
 - Node 24 and native Git. This operation reads an **already available, exact
   local SHA-1 commit**. It does not change the checkout, resolve a branch in
   place of the requested commit, fetch missing objects, or ask for credentials.
@@ -66,3 +71,22 @@ new directory outside the source. Each file is private. Missing inputs or
 failed SHACL or ASK leave no promoted output. SHACL checks the dataset's
 union for shape rules; ASK separately checks assertion placement. No
 inference, external traversal, or fragment-existence claim is made.
+
+
+## Receive the tracked snapshot
+
+After independent SHACL and ASK acceptance, the same build also writes
+`data/records/<dataset-basename>.nq.gz` and
+`data/records/<dataset-basename>.manifest.json` in the private output
+directory. The manifest binds the raw and compressed digests, quad count,
+immutable Science source/content tree and exact input blobs, and the native
+conformance report. It observes the resolved JS entry module and package
+manifest digests, Python entry module digests, and native conformance/RDFLib
+versions; these are measured runtime inputs, not proof of an entire
+dependency tree, an asserted Git revision for a same-version package, or
+release authorization.
+
+To receive a snapshot, commit the two generated files together in the
+Science repository and preserve the exact source commit in receiving
+history. Do not edit generated manifest digests or re-compress the bytes by
+hand. Running this builder does not push, deploy or make the data public.
