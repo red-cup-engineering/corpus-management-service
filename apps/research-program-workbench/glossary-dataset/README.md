@@ -91,11 +91,13 @@ After independent SHACL and ASK acceptance, the same build also writes
 `data/records/<dataset-basename>.manifest.json` in the private output
 directory. The manifest binds the raw and compressed digests, quad count,
 immutable Science source/content tree and exact input blobs, and the native
-conformance report. It observes the resolved JS entry module and package
-manifest digests, Python entry module digests, and native conformance/RDFLib
-versions; these are measured runtime inputs, not proof of an entire
-dependency tree, an asserted Git revision for a same-version package, or
-release authorization.
+conformance report. It records the application's own builder, projection,
+Git source reader, RDF helper and receipt modules, as well as the resolved
+dependency entry-module and package manifest digests, Python entry-module
+digests, and native conformance/RDFLib versions. Two builds can produce the
+same graph with different code. A matching output does not make the measured
+producer identities interchangeable. These measurements do not attest the
+entire dependency tree, a Git revision, or release authorization.
 
 To receive a snapshot, commit the two generated files together in the
 Science repository and preserve the exact source commit in receiving

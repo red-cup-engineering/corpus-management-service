@@ -87,6 +87,11 @@ test("native immutable Git → Workbench → RDF → independent named ASK and S
   assert.equal(receipt.artifact.compressedSha256,sha256(gzipBytes));
   assert.equal(receipt.artifact.quads,bytes.split("\n").length-1);
   assert.equal(gunzipSync(gzipBytes).toString("utf8"),bytes);
+  const ownRuntime = ["src/build-glossary-dataset.mjs", "src/git-source.mjs",
+    "src/project-glossary-dataset.mjs", "src/read-reviewed-turtle.py", "src/snapshot-receipt.mjs"];
+  assert.deepEqual(receipt.projectionProviders.workbench.modules, Object.fromEntries(
+    ownRuntime.map((path) => [path, sha256(readFileSync(new URL("../" + path, import.meta.url)))]),
+  ));
   assert.equal(receipt.projectionProviders.markdown.version,"0.6.0-dev.0");
   assert.match(receipt.projectionProviders.markdown.modules["derive-markdown-vault-graph"],/^[a-f0-9]{64}$/u);
   assert.equal(receipt.projectionProviders.researchCorpus.module,"research_corpus.vocabulary");

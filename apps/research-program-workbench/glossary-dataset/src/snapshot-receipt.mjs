@@ -6,6 +6,13 @@ import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
 
 const manifestPath = new URL("../package.json", import.meta.url);
+const workbenchModules = [
+  "build-glossary-dataset.mjs",
+  "git-source.mjs",
+  "project-glossary-dataset.mjs",
+  "read-reviewed-turtle.py",
+  "snapshot-receipt.mjs",
+];
 const providerExports = {
   gitEngine: ["@red-cup-engineering/git-engine", ["git-object-id", "git-command-codec", "pinned-source-files", "source-path-proof"]],
   markdown: ["@red-cup-engineering/markdown-engineering-services-section", ["read-markdown-frontmatter", "read-markdown-structure", "read-markdown-features", "derive-markdown-vault-graph", "resolve-markdown-link-target"]],
@@ -26,11 +33,23 @@ function providerRoot(filename, name) {
   throw new Error(`could not observe the package manifest for ${name}`);
 }
 
+function measureWorkbench(bytes) {
+  const { name, version } = JSON.parse(bytes);
+  const modules = Object.fromEntries(workbenchModules.map((path) =>
+    ["src/" + path, sha256(readFileSync(new URL(path, import.meta.url)))]));
+  return { name, version, manifestSha256: sha256(bytes), modules };
+}
+
+/** Measure the owning application, including the Python helper it invokes. */
+export function observeWorkbench() {
+  return measureWorkbench(readFileSync(manifestPath));
+}
+
 /** Observe the actual provider exports, not manually supplied package commit claims. */
 export function observeNodeProviders() {
   const bytes = readFileSync(manifestPath);
-  const { name, version, dependencies } = JSON.parse(bytes);
-  const workbench = { name, version, manifestSha256: sha256(bytes) };
+  const workbench = measureWorkbench(bytes);
+  const { dependencies } = JSON.parse(bytes);
   return { workbench, ...Object.fromEntries(Object.entries(providerExports).map(([key, [name, names]]) => {
     let selected;
     const modules = Object.fromEntries(names.map((subpath) => {
