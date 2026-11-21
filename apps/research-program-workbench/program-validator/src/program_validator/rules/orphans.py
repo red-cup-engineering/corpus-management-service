@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Iterator
 
-from research_corpus import CITE_RE, Corpus, Diagnostic, RELATION_KEYS, find_cross_refs
+from research_corpus import CITE_RE, Corpus, Diagnostic, find_cross_refs, outgoing, relation_targets
 
 
 def check(corpus: Corpus) -> Iterator[Diagnostic]:
@@ -16,12 +16,7 @@ def check(corpus: Corpus) -> Iterator[Diagnostic]:
     """
     referenced: set[str] = set()
     for note in corpus:
-        for key in RELATION_KEYS:
-            v = note.fm.get(key)
-            if isinstance(v, list):
-                referenced.update(v)
-            elif isinstance(v, str):
-                referenced.add(v)
+        referenced.update(outgoing(note.fm))
         referenced.update(find_cross_refs(
             note.body, source_path=note.path, path_slugs=corpus.path_slugs,
         ))
@@ -32,11 +27,11 @@ def check(corpus: Corpus) -> Iterator[Diagnostic]:
             continue
         if note.dir == "references":
             continue
-        positions = any(note.fm.get(k) for k in
+        positions = any(relation_targets(note.fm, k) for k in
                         ("introduces", "recaps", "discusses", "chapters"))
         if note.kind == "narrative" and positions:
             continue
-        if note.kind == "question" and note.fm.get("explores"):
+        if note.kind == "question" and relation_targets(note.fm, "explores"):
             continue
         yield Diagnostic(
             code="orphan",

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Iterator
 
-from research_corpus import Corpus, Diagnostic
+from research_corpus import Corpus, Diagnostic, relation_targets
 
 UNPROVED = ("draft", "sketch", "wip")
 
@@ -13,7 +13,7 @@ def check(corpus: Corpus) -> Iterator[Diagnostic]:
     for slug, n in corpus.items():
         if n.fm.get("status") != "proved":
             continue
-        for dep in (n.fm.get("depends-on") or []):
+        for dep in relation_targets(n.fm, "depends-on"):
             d = corpus.notes.get(dep)
             if d is None:
                 continue

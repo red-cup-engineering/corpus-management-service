@@ -3,7 +3,7 @@ name = "program-planner"
 version = "0.1.0"
 description = "Surface research demands from a research-corpus library."
 requires-python = ">=3.11"
-dependencies = ["research-corpus", "pyyaml>=6"]
+dependencies = ["research-corpus>=0.1.1.dev4,<0.2", "pyyaml>=6"]
 
 [project.scripts]
 program-planner = "program_planner.__main__:main"

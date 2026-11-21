@@ -86,6 +86,8 @@ jobs:
             apps/research-program-workbench/research-corpus \
             apps/research-program-workbench/research-citations \
             apps/research-program-workbench/program-validator \
+            apps/research-program-workbench/program-planner \
+            apps/research-program-workbench/program-auditor \
             apps/research-program-workbench/research-dagger \
             apps/research-program-workbench/monograph-composer
       - name: Ensure the native citation renderer is available
@@ -98,6 +100,7 @@ jobs:
           pandoc --version
       - name: Verify the living-science receiving specification
         run: |
+          python -m unittest discover -s apps/research-program-workbench/tests -p 'test_*receiving.py' -v
           python -m unittest discover -s apps/research-program-workbench/tests -p test_living_science_contracts.py -v
 
   authored-vocabulary-receiving:

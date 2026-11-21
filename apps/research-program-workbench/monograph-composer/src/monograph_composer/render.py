@@ -5,7 +5,7 @@ import re
 from pathlib import PurePosixPath
 from typing import Mapping
 
-from research_corpus import find_markdown_links, resolve_link_slug
+from research_corpus import find_markdown_links, relation_targets, resolve_link_slug
 from research_corpus.corpus import Corpus, Note
 from research_corpus.links import prose_links_text
 
@@ -135,7 +135,7 @@ def render_question(note: Note, all_slugs: set[str], *, path_slugs=None) -> str:
     label = KIND_LABEL["question"]
     status = note.fm.get("status", "open")
     badge = f" [{status.upper()}]" if status != "open" else ""
-    explores = note.fm.get("explores") or []
+    explores = relation_targets(note.fm, "explores")
     explores_links = ", ".join(f"[{e}](#{e})" for e in explores if e in all_slugs)
     explores_line = f"*Explores: {explores_links}*\n\n" if explores_links else ""
     heading = f"#### {label}{badge}: {title} {{#{note.slug}}}"

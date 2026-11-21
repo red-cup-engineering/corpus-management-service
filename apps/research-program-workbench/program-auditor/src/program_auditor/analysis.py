@@ -10,6 +10,7 @@ from research_corpus import (
     descendants as descendants_set,
     descendant_counts,
     foundation_distance,
+    relation_targets,
     reverse_depends_on,
 )
 from research_corpus.corpus import Corpus
@@ -143,7 +144,7 @@ def crossref_vs_depends_on(corpus: Corpus,
         body_links = {b for b in body_links if b in corpus}
         if drop_kinds:
             body_links = {b for b in body_links if corpus[b].kind not in drop_kinds}
-        deps = set(n.fm.get("depends-on") or []) & corpus.slugs()
+        deps = set(relation_targets(n.fm, "depends-on")) & corpus.slugs()
 
         anc = ancestors_set(slug, corpus.notes) if drop_descendants else set()
         descs = descendants_set(slug, rev) if (drop_descendants and rev is not None) else set()

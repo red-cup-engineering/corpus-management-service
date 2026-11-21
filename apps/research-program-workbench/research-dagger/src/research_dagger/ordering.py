@@ -1,7 +1,7 @@
 """Topo sort of primary content; narratives placed by positioning relations."""
 from __future__ import annotations
 
-from research_corpus import topo_sort
+from research_corpus import relation_targets, topo_sort
 from research_corpus.corpus import Corpus
 
 
@@ -21,7 +21,7 @@ def order_corpus(corpus: Corpus) -> list[str]:
         else:
             primary.append(slug)
 
-    deps = {s: (corpus[s].fm.get("depends-on") or []) for s in corpus.notes}
+    deps = {s: relation_targets(corpus[s].fm, "depends-on") for s in corpus.notes}
     order = topo_sort(primary, deps)
 
     for narr in sorted(narratives):
@@ -29,7 +29,7 @@ def order_corpus(corpus: Corpus) -> list[str]:
         for role, key in (("introduces", "introduces"),
                           ("recaps", "recaps"),
                           ("discusses", "discusses")):
-            targets = fm.get(key) or []
+            targets = relation_targets(fm, key)
             in_order = [t for t in targets if t in order]
             if not in_order:
                 continue

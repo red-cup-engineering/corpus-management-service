@@ -6,7 +6,7 @@ import os
 import sys
 from pathlib import Path
 
-from research_corpus import find_root, load
+from research_corpus import find_root, load, relation_targets
 from research_corpus.config import load_config
 from research_dagger import order_corpus
 
@@ -82,7 +82,7 @@ def build_composed(corpus, order, chapter_content, chapter_order, part_num_to_na
         pn_slug = part_num_to_narrative[part_num]
         parts.append(render_part(notes[pn_slug], all_slugs, path_slugs=corpus.path_slugs))
         parts.append("")
-        for ch in notes[pn_slug].fm.get("chapters") or []:
+        for ch in relation_targets(notes[pn_slug].fm, "chapters"):
             parts.append(render_chapter(notes[ch], all_slugs, path_slugs=corpus.path_slugs))
             parts.append("")
             for s in chapter_content.get(ch, []):

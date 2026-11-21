@@ -12,33 +12,26 @@ RELATION_KEYS: tuple[str, ...] = (
 )
 
 
+def relation_targets(frontmatter: Mapping, key: str) -> tuple[str, ...]:
+    """Read one authored relation as distinct, ordered, exact string targets.
+
+    A scalar is one target. A list supplies its string members, without
+    rewriting their spelling; empty, whitespace-only, and non-string
+    values do not become graph vertices.
+    """
+    value = frontmatter.get(key)
+    values = (value,) if isinstance(value, str) else value if isinstance(value, list) else ()
+    return tuple(dict.fromkeys(item for item in values
+                               if isinstance(item, str) and item.strip()))
+
+
 def outgoing(fm: Mapping, keys: Iterable[str] = RELATION_KEYS) -> list[str]:
-    """Flatten relation values from a single frontmatter dict into a list of slugs."""
-    out: list[str] = []
-    for k in keys:
-        v = fm.get(k)
-        if isinstance(v, list):
-            out.extend(s for s in v if isinstance(s, str))
-        elif isinstance(v, str):
-            out.append(v)
-    return out
+    """Distinct authored targets across the selected relation fields."""
+    return list(dict.fromkeys(target for key in keys for target in relation_targets(fm, key)))
 
 
-def transitive_deps(slug: str, notes: Mapping[str, Mapping]) -> set[str]:
-    """All slugs reachable from `slug` via `depends-on` edges."""
-    seen: set[str] = set()
-    stack: list[str] = list((notes[slug].get("fm") or {}).get("depends-on") or [])
-    while stack:
-        d = stack.pop()
-        if d in seen or d not in notes:
-            continue
-        seen.add(d)
-        stack.extend((notes[d].get("fm") or {}).get("depends-on") or [])
-    return seen
-
-
-def _depends_on(notes: Mapping[str, Mapping], slug: str) -> list[str]:
-    return list((notes[slug].get("fm") or {}).get("depends-on") or [])
+def _depends_on(notes: Mapping[str, Mapping], slug: str) -> tuple[str, ...]:
+    return relation_targets(notes[slug].get("fm") or {}, "depends-on")
 
 
 def reverse_depends_on(notes: Mapping[str, Mapping]) -> dict[str, list[str]]:
@@ -93,28 +86,24 @@ def descendant_counts(notes: Mapping[str, Mapping],
 def foundation_distance(notes: Mapping[str, Mapping]) -> dict[str, int]:
     """Longest path from an atomic note (empty depends-on) to each note.
 
-    Computed via Kahn's algorithm; cyclic components (if any) are skipped —
-    callers should detect cycles separately.
+    Computed via Kahn's algorithm. An unresolved authored target or a cycle
+    prevents a distance for that note and any dependent notes.
     """
-    indeg: dict[str, int] = {slug: 0 for slug in notes}
-    for slug in notes:
-        for dep in _depends_on(notes, slug):
-            if dep in notes:
-                indeg[slug] += 1
+    indeg = {slug: len(_depends_on(notes, slug)) for slug in notes}
 
     queue = deque([s for s, d in indeg.items() if d == 0])
-    dist: dict[str, int] = {s: 0 for s in queue}
+    tentative: dict[str, int] = {}
+    distance: dict[str, int] = {}
     rev = reverse_depends_on(notes)
     while queue:
         cur = queue.popleft()
+        distance[cur] = tentative.get(cur, 0)
         for nxt in rev.get(cur, ()):
-            cand = dist[cur] + 1
-            if cand > dist.get(nxt, -1):
-                dist[nxt] = cand
+            tentative[nxt] = max(tentative.get(nxt, 0), distance[cur] + 1)
             indeg[nxt] -= 1
             if indeg[nxt] == 0:
                 queue.append(nxt)
-    return dist
+    return distance
 
 
 def detect_cycles(notes: Mapping[str, Mapping]) -> list[list[str]]:
@@ -194,11 +183,12 @@ def topo_sort(items: Iterable[str], deps: Mapping[str, Iterable[str]]) -> list[s
     theorem appears right before that theorem, not at the top of the book.
     """
     items = set(items)
+    dependencies = {s: tuple(dict.fromkeys(d for d in deps.get(s, ()) if d in items))
+                    for s in items}
     dependents: dict[str, set[str]] = {s: set() for s in items}
-    for s in items:
-        for d in deps.get(s, []) or []:
-            if d in dependents:
-                dependents[d].add(s)
+    for s, targets in dependencies.items():
+        for d in targets:
+            dependents[d].add(s)
 
     remaining = {s: set(dependents[s]) for s in items}
     queue = sorted(s for s in items if not remaining[s])
@@ -206,11 +196,10 @@ def topo_sort(items: Iterable[str], deps: Mapping[str, Iterable[str]]) -> list[s
     while queue:
         s = queue.pop(0)
         process_order.append(s)
-        for d in deps.get(s, []) or []:
-            if d in remaining:
-                remaining[d].discard(s)
-                if not remaining[d]:
-                    bisect.insort(queue, d)
+        for d in dependencies[s]:
+            remaining[d].remove(s)
+            if not remaining[d]:
+                bisect.insort(queue, d)
 
     # Cycle handling: append leftovers alphabetically.
     for s in sorted(items):

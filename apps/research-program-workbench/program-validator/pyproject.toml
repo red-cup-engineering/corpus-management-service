@@ -3,7 +3,7 @@ name = "program-validator"
 version = "0.1.0"
 description = "Validate a research-corpus library and emit a WIP report."
 requires-python = ">=3.11"
-dependencies = ["research-corpus", "research-citations", "pyyaml>=6"]
+dependencies = ["research-corpus>=0.1.1.dev4,<0.2", "research-citations", "pyyaml>=6"]
 
 [project.scripts]
 program-validator = "program_validator.__main__:main"
