@@ -153,3 +153,20 @@ test("an owner-authored list stays complete and is not downgraded by strict Term
   assert.doesNotMatch(bytes,/"observed-unprojected"/u);
   assert.doesNotMatch(bytes,new RegExp(`<${rootUrl+first}> <${predicate}>`,"u"));
 });
+
+test("keeps repeated navigation witnesses, not a second independently mutable document edge",async t=>{
+  const {root,write,commit,args}=fixture(t);
+  const original=readFileSync(join(root,first),"utf8");
+  write(first,original+"\n[Repeated](second.md) and [Missing](missing.md).\n");
+  const out=await buildGlossaryDataset({...args,revision:commit()});
+  const bytes=readFileSync(join(out.destination,"build/dataset.nq"),"utf8");
+  const navigation = bytes.split("\n").filter(line=>line.endsWith(`<${namespaceGraph}navigation> .`));
+  const target = `<${vocabulary}target> <${rootUrl+second}>`;
+  const matches = navigation.filter(line=>line.includes(target));
+  assert.equal(new Set(matches.map(line=>line.split(" ")[0])).size,2);
+  const missing = navigation.find(line=>line.includes('"missing.md"')).split(" ")[0];
+  assert.ok(!navigation.some(line=>line.startsWith(missing+" ")&&line.includes(`<${vocabulary}target>`)));
+  assert.ok(!navigation.some(line=>line.includes("<http://purl.org/dc/terms/references>")));
+  assert.equal(out.coverage.authoredObservations,1);
+  assert.equal(out.coverage.projectedAuthoredObservations,1);
+});

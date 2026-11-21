@@ -19,7 +19,6 @@ const fieldName = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const namespace = {
   type: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
   label: "http://www.w3.org/2000/01/rdf-schema#label",
-  references: "http://purl.org/dc/terms/references",
   source: "http://purl.org/dc/terms/source",
   derivedFrom: "http://www.w3.org/ns/prov#wasDerivedFrom",
   schema: "https://schema.org/",
@@ -130,10 +129,7 @@ export async function projectGlossaryDataset({ profile, revision, tree, document
     contentValue(nav, id, vocab + "resolution", status);
     if (edge.fragment) contentValue(nav, id, vocab + "fragment", edge.fragment);
     if (edge.key) contentValue(nav, id, vocab + "frontmatterKey", edge.key);
-    if (target) {
-      link(nav, id, vocab + "target", target);
-      link(nav, iri(from), namespace.references, target);
-    }
+    if (target) link(nav, id, vocab + "target", target);
   }
   const claims = new Set();
   let authoredResolved = 0;

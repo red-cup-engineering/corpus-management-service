@@ -73,6 +73,17 @@ union for shape rules; ASK separately checks assertion placement. No
 inference, external traversal, or fragment-existence claim is made.
 
 
+## Query navigation with source evidence
+
+The canonical navigation graph records each link occurrence, its source,
+original target spelling and resolution state. A verified or admitted target
+is attached to the occurrence. A reader that needs document-to-target pairs
+can select distinct source/target pairs from these occurrences. They are not
+stored a second time as direct Dublin Core `references` triples. That would
+allow links to appear in the graph without their source observation and
+lose the distinction between two citations to the same path. A navigation
+reference does not establish an authored scientific relation.
+
 ## Receive the tracked snapshot
 
 After independent SHACL and ASK acceptance, the same build also writes
