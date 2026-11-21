@@ -156,6 +156,37 @@ class SnapshotGitEvidence(unittest.TestCase):
         ))
         self.assertEqual([str(row[0]) for row in rows], ["Original definition"])
 
+    def test_saved_select_uses_one_receiving_cut_and_typed_bindings(self):
+        from rdflib import URIRef
+
+        query = "data/schema/reviewed-select.rq"
+        text = ("SELECT ?definition WHERE { GRAPH <urn:fixture:vocab:graph:reviewed-vocabulary> "
+                "{ ?concept <urn:fixture:definition> ?definition } } ORDER BY ?definition\n")
+        self.write(query, text)
+        self.commit("Add the saved SELECT")
+        self.verify("prepare")
+        from unittest.mock import patch
+
+        with patch.dict(os.environ, {"GIT_DIR": str(self.root / "unrelated.git")}):
+            reader = SnapshotReceiver(self.root, PROFILE, MANIFEST, SNAPSHOT, OUTPUT).open_saved_queries()
+        self.write(query, text.replace("urn:fixture:definition", "urn:fixture:other"))
+        self.commit("Change the saved SELECT in a later cut")
+        result = reader.select(query, bindings={"concept": URIRef("urn:fixture:concept")})
+        self.assertEqual([str(row[0]) for row in result], ["Original definition"])
+        with self.assertRaisesRegex(ValueError, "RDF IRIs or literals"):
+            reader.select(query, bindings={"concept": "urn:fixture:concept"})
+
+    def test_saved_select_must_select_a_regular_query_blob(self):
+        query = "data/schema/linked-select.rq"
+        (self.root / query).symlink_to("query.rq")
+        self.commit("Track a nonregular query")
+        self.verify("prepare")
+        reader = SnapshotReceiver(self.root, PROFILE, MANIFEST, SNAPSHOT, OUTPUT).open_saved_queries()
+        with self.assertRaisesRegex(ValueError, "required Git object type"):
+            reader.select(query)
+        with self.assertRaisesRegex(ValueError, "selected by its .rq path"):
+            reader.select("data/schema/reviewed.ttl")
+
     def test_readers_refuse_different_prepared_bytes_before_replay(self):
         self.verify("prepare")
         receiver = SnapshotReceiver(self.root, PROFILE, MANIFEST, SNAPSHOT, OUTPUT)

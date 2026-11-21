@@ -108,6 +108,14 @@ with `SnapshotReceiver(...).load_prepared_dataset()` rather than opening
 the prepared path directly. This verifies the bytes and current pinned
 Git inputs; it does not sign the manifest or establish scientific truth.
 
+A saved-query reader opens the same verified buffer once and pins the
+receiving Git commit. Use `receiver.open_saved_queries()`, then
+`reader.select("data/schema/queries/reviewed-evidence.rq", bindings=...)`
+for reviewed SELECT files already tracked in that commit. Bind variables
+with RDFLib IRIs or literals. The original RDF conformance service admits
+only the bounded local named-graph SELECT profile, not arbitrary query text,
+external graphs, services, or a caller's different worktree file.
+
 To receive a snapshot, commit the two generated files together in the
 Science repository and preserve the exact source commit in receiving
 history. Do not edit generated manifest digests or re-compress the bytes by
