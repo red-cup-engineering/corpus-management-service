@@ -3,10 +3,26 @@ import { readTreeEntries } from "@red-cup-engineering/git-engine/git-command-cod
 import { readGitBlobObjectsSync } from "@red-cup-engineering/git-engine/pinned-source-files";
 import { readEvidenceBoundCommit } from "@red-cup-engineering/git-engine/source-path-proof";
 import { gitBlobIdOf } from "@red-cup-engineering/git-engine/git-object-id";
-import { admitProfile, safePath } from "./project-glossary-navigation.mjs";
 
 const oidPattern = /^[a-f0-9]{40}$/u;
 const limits = {maxBytes:32*1024*1024,timeoutMs:60_000};
+
+export function safePath(path) {
+  return typeof path === "string" && !/[\\\u0000-\u001f\u007f]/u.test(path)
+    && path.split("/").every((part) => part.length && part !== "." && part !== ".." && part !== ".git");
+}
+export function admitProfile(profile) {
+  const keys = ["formatVersion", "repository", "namespace", "contentRoot", "glossaryRoot", "reviewedVocabulary", "authoredRelations", "datasetConformance"];
+  if (!profile || Object.keys(profile).sort().join() !== keys.sort().join() || profile.formatVersion !== 1
+      || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(profile.repository)
+      || !/^urn:[A-Za-z0-9][A-Za-z0-9-]*:[A-Za-z0-9:._-]+:$/u.test(profile.namespace)
+      || [profile.contentRoot, profile.glossaryRoot, profile.reviewedVocabulary, profile.authoredRelations, profile.datasetConformance].some((p) => !safePath(p))
+      || profile.glossaryRoot !== profile.contentRoot + "/text/glossary"
+      || !profile.reviewedVocabulary.endsWith(".ttl")
+      || !profile.authoredRelations.endsWith(".json")
+      || !profile.datasetConformance.endsWith(".json")) throw new TypeError("invalid Science glossary dataset profile");
+  return profile;
+}
 
 export function openPinnedGitSource(directory, revision) {
   if (typeof directory !== "string" || !oidPattern.test(revision)) throw new TypeError("a local Git repository and a full SHA-1 commit are required");

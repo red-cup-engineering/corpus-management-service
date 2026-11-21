@@ -4,8 +4,7 @@ import { basename, dirname, isAbsolute, relative, resolve, join } from "node:pat
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { projectGlossaryDataset } from "./project-glossary-dataset.mjs";
-import { safePath } from "./project-glossary-navigation.mjs";
-import { readPinnedGlossarySource } from "./git-source.mjs";
+import { readPinnedGlossarySource, safePath } from "./git-source.mjs";
 import { createSnapshotReceipt, observeNodeProviders } from "./snapshot-receipt.mjs";
 
 const decoder = new TextDecoder("utf-8", {fatal:true,ignoreBOM:true});

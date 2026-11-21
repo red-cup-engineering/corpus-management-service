@@ -45,6 +45,15 @@ carrier admission independently. Reviewed assertions must match visible
 original document bytes and both reviewed SKOS endpoint bindings. No ad hoc
 command-line predicate or unpinned inventory is accepted.
 
+## Receive a pinned source catalog
+
+The existing `@red-cup-engineering/research-glossary-dataset/git-source` subpath
+reads the stored profile, content catalog and selected glossary blobs at one
+local Git commit. It needs native Git and Git Engine, not Markdown, Term,
+Triplet or the Python runtime. This is source custody only: it does not parse
+Markdown or admit records or graph assertions. Building or replaying the
+graph still needs the applicable projection dependencies above.
+
 ## Run
 
 From this directory, after materializing the exact runtime:
