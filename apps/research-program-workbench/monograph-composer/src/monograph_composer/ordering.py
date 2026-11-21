@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 
-from research_corpus import transitive_deps
+from research_corpus import ancestors, relation_targets, reverse_depends_on
 from research_corpus.corpus import Corpus
 
 ANCHOR_KINDS = frozenset({"definition", "concept", "morphism"})
@@ -22,7 +22,7 @@ def part_assignments(corpus: Corpus) -> tuple[dict[str, int], list[str]]:
     for slug, n in corpus.items():
         if n.kind != "narrative":
             continue
-        if n.fm.get("chapters"):
+        if relation_targets(n.fm, "chapters"):
             part_narratives.append(slug)
 
     def part_num(s: str) -> int:
@@ -32,7 +32,7 @@ def part_assignments(corpus: Corpus) -> tuple[dict[str, int], list[str]]:
     part_narratives.sort(key=part_num)
     for slug in part_narratives:
         pn = part_num(slug)
-        for ch in corpus[slug].fm.get("chapters") or []:
+        for ch in relation_targets(corpus[slug].fm, "chapters"):
             chapter_to_part[ch] = pn
     return chapter_to_part, part_narratives
 
@@ -58,13 +58,13 @@ def assign_chapters(
     chapter_order: list[str] = []
     for pn_slug in sorted(part_num_to_narrative.values(),
                           key=lambda s: int(PART_RE.search(s).group(1))):
-        for ch in corpus[pn_slug].fm.get("chapters") or []:
+        for ch in relation_targets(corpus[pn_slug].fm, "chapters"):
             chapter_order.append(ch)
     chapter_rank = {s: i for i, s in enumerate(chapter_order)}
 
     anchor_to_chapter: dict[str, str] = {}
     for ch in chapter_order:
-        for t in (corpus[ch].fm.get("introduces") or []):
+        for t in relation_targets(corpus[ch].fm, "introduces"):
             if t in corpus and t not in anchor_to_chapter \
                     and corpus[t].kind in ANCHOR_KINDS:
                 anchor_to_chapter[t] = ch
@@ -74,16 +74,12 @@ def assign_chapters(
 
     def tdeps(s: str) -> set[str]:
         if s not in tdeps_cache:
-            tdeps_cache[s] = transitive_deps(s, corpus.notes)
+            tdeps_cache[s] = ancestors(s, corpus.notes)
         return tdeps_cache[s]
 
     anchor_tdeps = {a: tdeps(a) for a in chapter_intros}
 
-    dependents: dict[str, set[str]] = {s: set() for s in corpus.notes}
-    for s in corpus.notes:
-        for d in (corpus[s].fm.get("depends-on") or []):
-            if d in dependents:
-                dependents[d].add(s)
+    dependents = reverse_depends_on(corpus.notes)
 
     chapter_cache: dict[str, str | None] = {}
 
@@ -100,15 +96,15 @@ def assign_chapters(
             return anchor_to_chapter[slug]
 
         n = corpus[slug]
-        closes_target = n.fm.get("closes")
-        if closes_target in anchor_to_chapter:
-            ch = anchor_to_chapter[closes_target]
-            chapter_cache[slug] = ch
-            return ch
+        for closes_target in relation_targets(n.fm, "closes"):
+            if closes_target in anchor_to_chapter:
+                ch = anchor_to_chapter[closes_target]
+                chapter_cache[slug] = ch
+                return ch
 
         if n.kind == "narrative":
             for key in ("introduces", "recaps", "discusses"):
-                targets = n.fm.get(key) or []
+                targets = relation_targets(n.fm, key)
                 tc = [assign(t, _stack + (slug,)) for t in targets if t in corpus]
                 tc = [c for c in tc if c is not None]
                 if tc:
@@ -138,7 +134,7 @@ def assign_chapters(
             while queue:
                 next_q = []
                 for s in queue:
-                    for d in (corpus[s].fm.get("depends-on") or []):
+                    for d in relation_targets(corpus[s].fm, "depends-on"):
                         if d in corpus and d not in dist:
                             dist[d] = dist[s] + 1
                             next_q.append(d)
@@ -152,7 +148,7 @@ def assign_chapters(
             return ch
 
         # Fallback 1: recurse via deps.
-        for d in (n.fm.get("depends-on") or []):
+        for d in relation_targets(n.fm, "depends-on"):
             if d in corpus:
                 ch = assign(d, _stack + (slug,))
                 if ch is not None:

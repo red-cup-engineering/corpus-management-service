@@ -15,9 +15,10 @@ from .graph import (
     descendant_counts,
     detect_cycles,
     foundation_distance,
+    outgoing,
+    relation_targets,
     reverse_depends_on,
     topo_sort,
-    transitive_deps,
 )
 from .links import LINK_RE, MarkdownLink, find_cross_refs, find_markdown_links, resolve_link_slug
 from .citations import CITE_RE, parse_bib_keys, parse_bib_diagnostics
@@ -36,9 +37,10 @@ __all__ = [
     "descendant_counts",
     "detect_cycles",
     "foundation_distance",
+    "outgoing",
+    "relation_targets",
     "reverse_depends_on",
     "topo_sort",
-    "transitive_deps",
     "LINK_RE",
     "MarkdownLink",
     "find_cross_refs",

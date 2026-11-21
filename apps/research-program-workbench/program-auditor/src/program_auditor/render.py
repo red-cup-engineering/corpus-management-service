@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from research_corpus import relation_targets, reverse_depends_on
 from research_corpus.corpus import Corpus
 
 from . import analysis as A
@@ -14,9 +15,17 @@ def render(corpus: Corpus,
     lines: list[str] = []
     lines.append("# Dependency-graph audit\n")
     lines.append(f"Notes scanned: **{len(notes)}**.")
-    edges = sum(len([d for d in (n.fm.get("depends-on") or []) if d in notes])
-                for n in corpus)
+    edges = sum(map(len, reverse_depends_on(notes).values()))
     lines.append(f"Dependency edges (resolved): **{edges}**.")
+    unresolved = [(slug, target) for slug, note in sorted(notes.items())
+                  for target in relation_targets(note.fm, "depends-on") if target not in notes]
+    lines.append(f"Dependency edges (unresolved): **{len(unresolved)}**.")
+    if unresolved:
+        lines.append("")
+        lines.append("## Unresolved authored dependencies")
+        lines.append("")
+        lines.extend(f"- `{slug}` depends on `{target}`, not indexed in this corpus."
+                     for slug, target in unresolved)
     lines.append("")
 
     unrelated_pairs = sum(len(v["body_not_in_deps_unrelated"]) for v in crossref.values())

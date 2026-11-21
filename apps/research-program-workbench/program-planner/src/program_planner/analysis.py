@@ -10,7 +10,7 @@ import re
 from collections import defaultdict
 from typing import Iterable
 
-from research_corpus import RELATION_KEYS, find_cross_refs
+from research_corpus import find_cross_refs, outgoing, relation_targets
 from research_corpus.corpus import Corpus
 
 THEOREM_KINDS = ("theorem", "lemma", "proposition", "corollary")
@@ -18,13 +18,7 @@ ANCHOR_KINDS = ("definition", "concept", "morphism")
 
 
 def out_edges(note, body_links: bool = True, *, corpus: Corpus | None = None) -> set[str]:
-    edges: set[str] = set()
-    for k in RELATION_KEYS:
-        v = note.fm.get(k)
-        if isinstance(v, list):
-            edges.update(v)
-        elif isinstance(v, str):
-            edges.add(v)
+    edges = set(outgoing(note.fm))
     if body_links:
         edges.update(find_cross_refs(
             note.body, source_path=note.path,
@@ -41,16 +35,6 @@ def in_edges_index(corpus: Corpus) -> dict[str, set[str]]:
             if tgt in corpus:
                 idx[tgt].add(slug)
     return idx
-
-
-def explored_refs(note) -> list[str]:
-    """A single referenced slug is one relation, not its characters."""
-    raw = note.fm.get("explores")
-    if isinstance(raw, str):
-        return [raw] if raw else []
-    if isinstance(raw, list):
-        return [r for r in raw if isinstance(r, str) and r]
-    return []
 
 
 def open_questions(corpus: Corpus) -> list[str]:
@@ -81,7 +65,7 @@ def entity_firmness(slug: str, corpus: Corpus, idx: dict[str, set[str]]) -> str:
 
 
 def question_blockers(q: str, corpus: Corpus, idx: dict[str, set[str]]) -> dict:
-    explored = explored_refs(corpus[q])
+    explored = relation_targets(corpus[q].fm, "explores")
     out: dict[str, list] = {"firm": [], "sketch": [], "loose": [], "missing": []}
     for ent in explored:
         f = entity_firmness(ent, corpus, idx)
@@ -172,7 +156,7 @@ def enablement_frontier(corpus: Corpus,
                         idx: dict[str, set[str]]) -> list[tuple[str, dict]]:
     demands: dict[str, dict] = {}
     for q in open_questions(corpus):
-        for ent in explored_refs(corpus[q]):
+        for ent in relation_targets(corpus[q].fm, "explores"):
             if ent not in corpus:
                 continue
             char = proven_theorems_about(ent, corpus, idx)
@@ -190,7 +174,7 @@ def demand_clusters(corpus: Corpus,
                     ) -> list[tuple[str, set[str], str, float]]:
     shared: dict[str, set[str]] = defaultdict(set)
     for q in open_questions(corpus):
-        for e in explored_refs(corpus[q]):
+        for e in relation_targets(corpus[q].fm, "explores"):
             shared[e].add(q)
     out = []
     for e, qs in shared.items():
@@ -208,13 +192,11 @@ def realizers_index(corpus: Corpus) -> dict[str, list[str]]:
     idx: dict[str, list[str]] = defaultdict(list)
     for s, n in corpus.items():
         if n.kind in ("definition", "morphism"):
-            rs = n.fm.get("realizes") or []
+            rs = relation_targets(n.fm, "realizes")
         elif n.kind == "example":
-            rs = n.fm.get("instantiates") or []
+            rs = relation_targets(n.fm, "instantiates")
         else:
             continue
-        if isinstance(rs, str):
-            rs = [rs]
         for r in rs:
             idx[r].append(s)
     return idx
@@ -226,7 +208,7 @@ def realization_gaps(corpus: Corpus) -> dict:
                   if n.kind == "concept" and not realizers.get(s)]
     unanchored = [s for s, n in corpus.items()
                   if n.kind in ("definition", "morphism")
-                  and not (n.fm.get("realizes") or [])]
+                  and not (relation_targets(n.fm, "realizes"))]
     multi = [(s, realizers[s]) for s in realizers
              if len(realizers[s]) >= 2
              and corpus.notes.get(s) is not None
@@ -247,7 +229,7 @@ def split_candidates(corpus: Corpus) -> list[dict]:
         if n.kind != "concept":
             continue
         sections = _SECTION_RE.findall(n.body)
-        deps = (n.fm.get("depends-on") or [])
+        deps = relation_targets(n.fm, "depends-on")
         if len(sections) >= 4 and len(deps) >= 4:
             out.append({"slug": s, "n_sections": len(sections), "n_deps": len(deps)})
     out.sort(key=lambda c: (-c["n_sections"], c["slug"]))
@@ -258,7 +240,7 @@ def unnamed_ancestor_candidates(corpus: Corpus,
                                 limit: int = 15
                                 ) -> list[tuple[str, str, set[str], float]]:
     open_q = open_questions(corpus)
-    explored = {q: set(explored_refs(corpus[q])) for q in open_q}
+    explored = {q: set(relation_targets(corpus[q].fm, "explores")) for q in open_q}
     out = []
     for i, q1 in enumerate(open_q):
         e1 = explored[q1]
