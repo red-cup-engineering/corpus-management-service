@@ -1,9 +1,11 @@
 """Use the RDF Conformance runtime's RDFLib reader for a pinned Turtle graph."""
+import hashlib
+from importlib.util import find_spec
 import json
 import sys
 from pathlib import Path
 
-from rdflib import Dataset, Graph, RDF, RDFS, SKOS, URIRef
+from rdflib import Dataset, Graph, RDF, RDFS, SKOS, URIRef, __version__ as rdflib_version
 
 source, graph_name = sys.argv[1:]
 core = Graph().parse(data=Path(source).read_text(encoding="utf-8"), format="turtle",
@@ -22,4 +24,15 @@ bindings = sorted(
 )
 if not bindings:
     raise ValueError("reviewed SKOS vocabulary has no document bindings")
-print(json.dumps({"nquads": reviewed.serialize(format="nquads"), "bindings": bindings}))
+def observe_module(name):
+    module = find_spec(name)
+    if module is None or not module.origin:
+        raise ValueError(f"native Python provider module not found: {name}")
+    return {"module": name, "sha256": hashlib.sha256(Path(module.origin).read_bytes()).hexdigest()}
+
+runtime = {
+    "researchCorpus": observe_module("research_corpus.vocabulary"),
+    "rdfConformance": observe_module("rdf_vocabulary_conformance.__main__"),
+    "rdflib": {"version": rdflib_version},
+}
+print(json.dumps({"nquads": reviewed.serialize(format="nquads"), "bindings": bindings, "runtime": runtime}))

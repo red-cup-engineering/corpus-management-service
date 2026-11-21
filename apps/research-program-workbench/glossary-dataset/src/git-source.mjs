@@ -41,5 +41,12 @@ export function openPinnedGitSource(directory, revision) {
     if (!entry || unexpected.length || entry.path!==path) throw new Error(`pinned Git file does not exist: ${path}`);
     return receive([entry])[0];
   }
-  return Object.freeze({revision,tree,list,read,receive});
+  function readTree(path) {
+    if (!safePath(path)) throw new TypeError("unsafe Git tree path");
+    const [entry,...unexpected] = readTreeEntries(git(["ls-tree","-z","--full-tree",tree,"--",path]), 2);
+    if (!entry || unexpected.length || entry.path!==path || entry.mode!=="040000" ||
+        entry.type!=="tree" || !oidPattern.test(entry.object)) throw new Error(`pinned Git tree does not exist: ${path}`);
+    return {path,oid:entry.object};
+  }
+  return Object.freeze({revision,tree,list,read,readTree,receive});
 }

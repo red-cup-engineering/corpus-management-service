@@ -1,7 +1,7 @@
 {
   "name": "@red-cup-engineering/research-glossary-dataset",
   "private": true,
-  "version": "0.1.0-dev.1",
+  "version": "0.1.0-dev.2",
   "description": "Build the authenticated RDF dataset of a pinned Science glossary using the original Workbench, Markdown, Term and Triplet owners.",
   "type": "module",
   "engines": {
