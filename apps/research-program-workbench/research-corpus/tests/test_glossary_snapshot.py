@@ -1,4 +1,5 @@
 """Exercise native Git provenance and exact document evidence in isolated repositories."""
+import builtins
 import gzip
 import hashlib
 import json
@@ -8,6 +9,7 @@ import subprocess
 import sys
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 from research_corpus.glossary_snapshot import (
     LIMIT, SnapshotReceiver, compare_navigation, parse_nquads, verify_owner_assertions,
@@ -138,6 +140,80 @@ class SnapshotGitEvidence(unittest.TestCase):
         else:
             self.assertNotEqual(result.returncode, 0)
             self.assertIn(failure, result.stderr)
+
+    def test_prepare_reads_only_one_archive_and_writes_exact_plain_bytes(self):
+        archive = self.root / SNAPSHOT
+        plain = gzip.decompress(archive.read_bytes())
+        opens = []
+        original_path_open = Path.open
+        original_builtin_open = builtins.open
+
+        def record_path_open(path, *args, **kwargs):
+            if path == archive:
+                opens.append(path)
+            return original_path_open(path, *args, **kwargs)
+
+        def record_builtin_open(path, *args, **kwargs):
+            if path == archive:
+                opens.append(path)
+            return original_builtin_open(path, *args, **kwargs)
+
+        receiver = SnapshotReceiver(self.root, PROFILE, MANIFEST, SNAPSHOT, OUTPUT)
+        with patch.object(Path, "open", record_path_open), patch("builtins.open", record_builtin_open):
+            receiver.prepare()
+        self.assertEqual(opens, [archive])
+        self.assertEqual((self.root / OUTPUT).read_bytes(), plain)
+
+    def test_prepare_refuses_each_wrong_digest_before_creating_output(self):
+        receiver = SnapshotReceiver(self.root, PROFILE, MANIFEST, SNAPSHOT, OUTPUT)
+        expected = self.record["artifact"].copy()
+        for key, failure in (
+            ("compressedSha256", "Compressed glossary SHA-256 differs"),
+            ("sha256", "Uncompressed glossary exceeds the limit or differs"),
+        ):
+            with self.subTest(digest=key):
+                self.record["artifact"] = dict(expected, **{key: hashlib.sha256(b"wrong").hexdigest()})
+                self.write(MANIFEST, json.dumps(self.record))
+                with self.assertRaisesRegex(ValueError, failure):
+                    receiver.prepare()
+                self.assertFalse((self.root / OUTPUT).exists())
+
+    def test_prepare_applies_size_limit_to_both_representations(self):
+        receiver = SnapshotReceiver(self.root, PROFILE, MANIFEST, SNAPSHOT, OUTPUT)
+        archive = (self.root / SNAPSHOT).read_bytes()
+        plain = gzip.decompress(archive)
+        self.assertLess(len(archive), len(plain))
+        for limit, failure in (
+            (len(archive) - 1, "Compressed glossary exceeds the snapshot size limit"),
+            (len(plain) - 1, "Uncompressed glossary exceeds the limit"),
+        ):
+            with self.subTest(limit=limit), patch("research_corpus.glossary_snapshot.LIMIT", limit):
+                with self.assertRaisesRegex(ValueError, failure):
+                    receiver.prepare()
+                self.assertFalse((self.root / OUTPUT).exists())
+        with patch("research_corpus.glossary_snapshot.LIMIT", len(plain)):
+            receiver.prepare()
+        self.assertEqual((self.root / OUTPUT).read_bytes(), plain)
+
+    def test_prepare_allows_exact_compressed_size_limit(self):
+        plain = b'<urn:fixture:subject> <urn:fixture:property> "value" .\n'
+        archive = gzip.compress(plain, mtime=0)
+        self.assertGreater(len(archive), len(plain))
+        self.write(SNAPSHOT, archive)
+        self.record["artifact"].update(sha256=hashlib.sha256(plain).hexdigest(),
+                                       compressedSha256=hashlib.sha256(archive).hexdigest())
+        self.write(MANIFEST, json.dumps(self.record))
+        receiver = SnapshotReceiver(self.root, PROFILE, MANIFEST, SNAPSHOT, OUTPUT)
+        with patch("research_corpus.glossary_snapshot.LIMIT", len(archive)):
+            receiver.prepare()
+        self.assertEqual((self.root / OUTPUT).read_bytes(), plain)
+
+    def test_prepare_does_not_replace_an_existing_output(self):
+        self.write(OUTPUT, b"Preserve this existing output\n")
+        receiver = SnapshotReceiver(self.root, PROFILE, MANIFEST, SNAPSHOT, OUTPUT)
+        with self.assertRaises(FileExistsError):
+            receiver.prepare()
+        self.assertEqual((self.root / OUTPUT).read_bytes(), b"Preserve this existing output\n")
 
     def test_non_glossary_body_edit_does_not_stale_the_path_inventory(self):
         self.write("content/other.md", "Revised body at the same path\n")
