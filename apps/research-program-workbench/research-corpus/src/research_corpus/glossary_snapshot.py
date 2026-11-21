@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 import gzip
 import hashlib
+from io import BytesIO
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -159,10 +160,15 @@ class SnapshotReceiver:
     def prepare(self):
         manifest, _, _ = self.validated_context()
         artifact = manifest["artifact"]
-        with self.selected(self.snapshot).open("rb") as compressed:
-            if hashlib.file_digest(compressed, "sha256").hexdigest() != artifact["compressedSha256"]:
-                raise ValueError("Compressed glossary SHA-256 differs from its manifest")
-        with gzip.open(self.selected(self.snapshot), "rb") as stream:
+        # The Workbench producer bounds GNU gzip output with the same 16 MiB
+        # ceiling. Decode the exact bounded buffer whose digest was verified.
+        with self.selected(self.snapshot).open("rb") as archive:
+            compressed = archive.read(LIMIT + 1)
+        if len(compressed) > LIMIT:
+            raise ValueError("Compressed glossary exceeds the snapshot size limit")
+        if hashlib.sha256(compressed).hexdigest() != artifact["compressedSha256"]:
+            raise ValueError("Compressed glossary SHA-256 differs from its manifest")
+        with gzip.GzipFile(fileobj=BytesIO(compressed), mode="rb") as stream:
             data = stream.read(LIMIT + 1)
         if len(data) > LIMIT or hashlib.sha256(data).hexdigest() != artifact["sha256"]:
             raise ValueError("Uncompressed glossary exceeds the limit or differs from its manifest")
