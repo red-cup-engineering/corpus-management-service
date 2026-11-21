@@ -1,0 +1,372 @@
+"""Exercise native Git provenance and exact document evidence in isolated repositories."""
+import gzip
+import hashlib
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+from tempfile import TemporaryDirectory
+import unittest
+
+from research_corpus.glossary_snapshot import verify_owner_assertions
+MANIFEST = "data/records/fixture-glossary.manifest.json"
+SNAPSHOT = "data/records/fixture-glossary.nq.gz"
+PROFILE = "data/schema/fixture-glossary-build.json"
+CONFIG = "data/schema/fixture-glossary-dataset-conformance.json"
+OUTPUT = "build/fixture-glossary.nq"
+GLOSSARY = "content/text/glossary"
+DOCUMENT = GLOSSARY + "/evidence (draft).md"
+DOCUMENT_IRI_PATH = GLOSSARY + "/evidence%20(draft).md"
+SECOND_DOCUMENT = GLOSSARY + "/other.md"
+BASE = "https://github.com/fixture/corpus/blob/"
+V = "urn:fixture:vocab:glossary-vocabulary:"
+REVIEWED_GRAPH = "<urn:fixture:vocab:graph:reviewed-vocabulary>"
+NAVIGATION_GRAPH = "<urn:fixture:vocab:graph:navigation>"
+
+
+class SnapshotGitEvidence(unittest.TestCase):
+    def setUp(self):
+        tmp = TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        self.env = {**os.environ, "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"}
+        self.git("init", "-q")
+        self.git("config", "user.email", "fixture@example.invalid")
+        self.git("config", "user.name", "Fixture")
+        self.write(DOCUMENT, "Original glossary bytes\n")
+        self.write(SECOND_DOCUMENT, "Second glossary entry\n")
+        self.write("content/other.md", "Other content\n")
+        self.write("research.toml", 'program = "test"\n')
+        self.write("data/schema/reviewed.ttl",
+                   '<urn:fixture:concept> <urn:fixture:definition> "Original definition" ; '
+                   '<urn:fixture:source> [ <urn:fixture:note> "Reviewed source" ] .\n')
+        self.write("data/schema/authored.json", "{}\n")
+        self.write("data/schema/shape.ttl", "")
+        self.write("data/schema/query.rq", "ASK { ?s ?p ?o }\n")
+        self.write(PROFILE, json.dumps({
+            "namespace": "urn:fixture:vocab:", "repository": "fixture/corpus",
+            "contentRoot": "content", "glossaryRoot": GLOSSARY,
+            "reviewedVocabulary": "data/schema/reviewed.ttl",
+            "authoredRelations": "data/schema/authored.json", "datasetConformance": CONFIG,
+        }))
+        self.write(CONFIG, json.dumps({"dataset": {
+            "file": "build/fixture-glossary.nq",
+            "shapes": ["data/schema/shape.ttl"], "ask": [{"query": "data/schema/query.rq"}],
+        }}))
+        self.commit("Original source")
+        self.source = self.git("rev-parse", "HEAD")
+        self.tree = self.git("rev-parse", "HEAD^{tree}")
+        names = ("research.toml", PROFILE, CONFIG, "data/schema/reviewed.ttl",
+                 "data/schema/authored.json", "data/schema/shape.ttl", "data/schema/query.rq")
+        self.record = {
+            "formatVersion": 1,
+            "artifact": {"path": SNAPSHOT},
+            "coverage": {"audience": "authenticated", "trackedGlossaryMarkdown": 2, "projectedDocuments": 2},
+            "source": {"commit": self.source, "contentTree": self.git("rev-parse", "HEAD:content"),
+                       "inputs": {name: self.git("rev-parse", "HEAD:" + name) for name in names}},
+        }
+        self.dataset(self.source)
+        self.commit("Received graph")
+
+    def write(self, path, content):
+        destination = self.root / path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(content, bytes):
+            destination.write_bytes(content)
+        else:
+            destination.write_text(content, encoding="utf-8")
+
+    def git(self, *args):
+        return subprocess.check_output(["git", *args], cwd=self.root, env=self.env, text=True).strip()
+
+    def commit(self, message):
+        self.git("add", "--all")
+        self.git("commit", "-qm", message)
+
+    def dataset(self, provenance, *, definition="Original definition", definition_graph=REVIEWED_GRAPH,
+                omit_second=False, extra_quad=False):
+        graph = "<urn:fixture:vocab:graph:documents>"
+        paths = [(DOCUMENT, DOCUMENT_IRI_PATH)]
+        if not omit_second:
+            paths.append((SECOND_DOCUMENT, SECOND_DOCUMENT))
+        self.record["coverage"]["projectedDocuments"] = len(paths)
+        rows = []
+        for path, encoded in paths:
+            doc = "<" + BASE + "main/" + encoded + ">"
+            blob = self.git("rev-parse", self.source + ":" + path)
+            rows.extend(f"{doc} {p} {o} {graph} ." for p, o in (
+                ("<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>", "<https://schema.org/DigitalDocument>"),
+                ("<" + V + "path>", json.dumps(path)), ("<" + V + "gitBlob>", json.dumps(blob)),
+                ("<http://www.w3.org/ns/prov#wasDerivedFrom>", "<" + BASE + provenance + "/" + encoded + ">"),
+            ))
+        data = ("\n".join(rows) + "\n").encode()
+        # Intentionally use a different blank-node label from the original Turtle source.
+        data += (
+            f'<urn:fixture:concept> <urn:fixture:definition> {json.dumps(definition)} {definition_graph} .\n'
+            f'<urn:fixture:concept> <urn:fixture:source> _:other {REVIEWED_GRAPH} .\n'
+            f'_:other <urn:fixture:note> "Reviewed source" {REVIEWED_GRAPH} .\n'
+        ).encode()
+        if extra_quad:
+            data += f'<urn:fixture:concept> <urn:fixture:definition> {json.dumps(definition)} {NAVIGATION_GRAPH} .\n'.encode()
+        self.record["artifact"]["quads"] = len(data.splitlines())
+        compressed = gzip.compress(data, mtime=0)
+        self.record["artifact"]["sha256"] = hashlib.sha256(data).hexdigest()
+        self.record["artifact"]["compressedSha256"] = hashlib.sha256(compressed).hexdigest()
+        self.write(SNAPSHOT, compressed)
+        self.write(MANIFEST, json.dumps(self.record))
+
+    def verify(self, stage, *, failure=None):
+        result = subprocess.run([sys.executable, "-m", "research_corpus.glossary_snapshot", stage,
+                                 "--root", str(self.root), "--profile", PROFILE, "--manifest", MANIFEST,
+                                 "--snapshot", SNAPSHOT, "--output", OUTPUT], cwd=self.root, env=self.env,
+                                capture_output=True, text=True, check=False)
+        if failure is None:
+            self.assertEqual(result.returncode, 0, result.stderr)
+        else:
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(failure, result.stderr)
+
+    def test_non_glossary_body_edit_does_not_stale_the_path_inventory(self):
+        self.write("content/other.md", "Revised body at the same path\n")
+        self.commit("Revise other content")
+        self.verify("prepare")
+        self.verify("evidence")
+
+    def test_dirty_worktree_profile_is_not_a_source_selector(self):
+        self.write(PROFILE, "not even JSON")
+        self.verify("prepare")
+        self.verify("evidence")
+
+    def test_output_does_not_follow_a_worktree_symlink(self):
+        (self.root / "build").symlink_to(self.root / "data", target_is_directory=True)
+        self.verify("prepare", failure="may not pass through a symlink")
+
+    def test_added_path_stales_navigation_inventory(self):
+        self.write("content/new.md", "A new exact link target\n")
+        self.commit("Add target")
+        self.verify("prepare", failure="tracked content paths changed")
+
+    def test_glossary_content_edit_is_stale(self):
+        self.write(DOCUMENT, "Changed glossary content\n")
+        self.commit("Change glossary")
+        self.verify("prepare", failure="glossary bytes or tracked content paths changed")
+
+    def test_glossary_symlink_is_not_admitted(self):
+        (self.root / (GLOSSARY + "/link.md")).symlink_to("evidence (draft).md")
+        self.commit("Add a nonregular glossary file")
+        self.verify("prepare", failure="not a regular Git blob")
+
+    def test_unrelated_commit_is_rejected_even_with_same_tree(self):
+        self.record["source"]["commit"] = self.git("commit-tree", self.tree, "-m", "Unrelated root")
+        self.write(MANIFEST, json.dumps(self.record))
+        self.verify("prepare", failure="not an ancestor")
+
+    def test_document_must_name_the_exact_source_even_with_matching_checksums(self):
+        self.dataset("0" * 40)
+        self.verify("prepare")
+        self.verify("evidence", failure="RDF document does not match the claimed Git source")
+
+    def test_a_rehashed_snapshot_cannot_change_a_reviewed_definition(self):
+        self.dataset(self.source, definition="Unreviewed replacement")
+        self.verify("prepare")
+        self.verify("evidence", failure="reviewed-vocabulary graph differs")
+
+    def test_individually_bound_subset_is_not_a_complete_authenticated_graph(self):
+        self.dataset(self.source, omit_second=True)
+        self.verify("prepare")
+        self.verify("evidence", failure=f"omits 1 pinned glossary path(s); first: {SECOND_DOCUMENT}")
+
+    def test_dataset_counts_quads_not_union_triples(self):
+        # A triple asserted in two named graphs counts as two quads.
+        self.dataset(self.source, extra_quad=True)
+        self.verify("prepare")
+        self.verify("evidence")
+        self.record["artifact"]["quads"] -= 1
+        self.write(MANIFEST, json.dumps(self.record))
+        self.verify("evidence", failure="RDF quad count differs")
+
+    def test_public_projection_is_not_the_checked_in_authenticated_dataset(self):
+        self.record["coverage"]["audience"] = "public"
+        self.write(MANIFEST, json.dumps(self.record))
+        self.verify("prepare")
+        self.verify("evidence", failure="must be the authenticated projection")
+
+    def test_claimed_tracked_coverage_is_independent_of_projected_count(self):
+        self.record["coverage"]["trackedGlossaryMarkdown"] = 1
+        self.write(MANIFEST, json.dumps(self.record))
+        self.verify("prepare")
+        self.verify("evidence", failure="Tracked glossary count differs")
+
+    def test_matching_union_does_not_allow_reviewed_statements_in_navigation(self):
+        self.dataset(self.source, definition_graph=NAVIGATION_GRAPH)
+        self.verify("prepare")
+        self.verify("evidence", failure="reviewed-vocabulary graph differs")
+
+
+class AlternateProfileReceiving(unittest.TestCase):
+    def test_installed_receiver_replays_profile_with_no_relativity_coordinates(self):
+        from rdflib import Graph, URIRef
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            def put(path, data):
+                file = root / path
+                file.parent.mkdir(parents=True, exist_ok=True)
+                file.write_bytes(data if isinstance(data, bytes) else data.encode())
+
+            def git(*args):
+                return subprocess.check_output(["git", *args], cwd=root, text=True).strip()
+
+            def python(module, *args):
+                return subprocess.check_output([sys.executable, "-m", module, *args],
+                                               cwd=root, text=True, stderr=subprocess.PIPE)
+
+            git("init", "-q")
+            git("config", "user.email", "fixture@example.invalid")
+            git("config", "user.name", "Fixture")
+            prefix = "urn:example:ontology:"
+            base = "https://github.com/example/biology/blob/"
+            profile, manifest, snapshot = ("settings/profile.json", "output/received.index.json",
+                                           "output/vocab.nq.gz")
+            output = "cache/dataset.nq"
+            paths = ["notebooks/terms/cell.md", "notebooks/terms/tissue.md"]
+            put(paths[0], "---\nname: Cell\ndescription: A test entry.\n"
+                          "part-of: tissue\n---\n# Cell\n")
+            put(paths[1], "---\nname: Tissue\ndescription: Another test entry.\n---\n# Tissue\n")
+            put("research.toml", '[corpus]\nlib_dirs=["notebooks/terms"]\n[vocabulary]\n'
+                f'scheme="{prefix}scheme"\nnamespace="{prefix}term:"\n'
+                f'document_base_url="{base}main"\noutput="settings/review.ttl"\n'
+                f'members={json.dumps(paths)}\n')
+            authored, config = "settings/relations.json", "settings/rdf.json"
+            put(profile, json.dumps({"namespace": prefix, "repository": "example/biology",
+                                    "contentRoot": "notebooks", "glossaryRoot": "notebooks/terms",
+                                    "reviewedVocabulary": "settings/review.ttl", "authoredRelations": authored,
+                                    "datasetConformance": config}))
+            put(authored, json.dumps({"formatVersion": 1, "relations": {"part-of": "urn:example:part-of"}}))
+            put(config, json.dumps({"dataset": {"file": output, "shapes": [], "ask": []}}))
+            python("research_corpus.vocabulary", "--root", str(root))
+            git("add", ".")
+            git("commit", "-qm", "Select source")
+            src = git("rev-parse", "HEAD")
+            # Separate authored witness from the source producer; the receiver
+            # must derive the expected evidence from the original frontmatter.
+            graph = f"<{prefix}graph:authored-assertions>"
+            v = prefix + "glossary-vocabulary:"
+            cell, tissue = prefix + "term:cell", prefix + "term:tissue"
+            witness = "<urn:example:owned-witness>"
+            lines = [f"<{cell}> <urn:example:part-of> <{tissue}> {graph} ."]
+            lines.extend(f"{witness} <{pred}> {value} {graph} ." for pred, value in (
+                ("http://www.w3.org/1999/02/22-rdf-syntax-ns#type", f"<{v}AuthoredRelationObservation>"),
+                ("http://purl.org/dc/terms/source", f"<{base}main/{paths[0]}>"),
+                (v + "predicateKey", '"part-of"'), (v + "rawTarget", '"tissue"'),
+                (v + "projectionStatus", '"admitted-carrier"'), (v + "target", f"<{tissue}>"),
+            ))
+            reviewed = Graph().parse(root / "settings/review.ttl", format="turtle")
+            lines.extend(f"{s.n3()} {p.n3()} {o.n3()} <{prefix}graph:reviewed-vocabulary> ."
+                         for s, p, o in reviewed)
+            for path in paths:
+                graph = f"<{prefix}graph:documents>"
+                uri = URIRef(base + "main/" + path).n3()
+                lines.extend(f"{uri} <{pred}> {value} {graph} ." for pred, value in (
+                    ("http://www.w3.org/1999/02/22-rdf-syntax-ns#type", "<https://schema.org/DigitalDocument>"),
+                    (v + "path", json.dumps(path)), (v + "gitBlob", json.dumps(git("rev-parse", src + ":" + path))),
+                    ("http://www.w3.org/ns/prov#wasDerivedFrom", f"<{base}{src}/{path}>"),
+                ))
+            raw = ("\n".join(lines) + "\n").encode()
+            packed = gzip.compress(raw, mtime=0)
+            put(snapshot, packed)
+            put(manifest, json.dumps({
+                "formatVersion": 1,
+                "artifact": {"path": snapshot, "sha256": hashlib.sha256(raw).hexdigest(),
+                             "compressedSha256": hashlib.sha256(packed).hexdigest(), "quads": len(lines)},
+                "coverage": {"audience": "authenticated", "trackedGlossaryMarkdown": 2, "projectedDocuments": 2},
+                "source": {"commit": src, "contentTree": git("rev-parse", src + ":notebooks"),
+                           "inputs": {name: git("rev-parse", src + ":" + name)
+                                      for name in (profile, authored, config, "research.toml", "settings/review.ttl")}},
+            }))
+            git("add", ".")
+            git("commit", "-qm", "Receive snapshot")
+            args = ("--root", str(root), "--profile", profile, "--manifest", manifest,
+                    "--snapshot", snapshot, "--output", output)
+            for stage in ("prepare", "evidence", "authored"):
+                result = python("research_corpus.glossary_snapshot", stage, *args)
+            self.assertIn("Verified 1 reviewed concept assertions", result)
+
+
+class OwnerAssertionReplay(unittest.TestCase):
+    def setUp(self):
+        from rdflib import Dataset, Literal, RDF, URIRef
+        from rdflib.namespace import DCTERMS, RDFS, SKOS
+
+        self.ns = "urn:fixture:"
+        self.dataset = Dataset()
+        self.authored = self.dataset.graph(URIRef(self.ns + "graph:authored-assertions"))
+        reviewed = self.dataset.graph(URIRef(self.ns + "graph:reviewed-vocabulary"))
+        self.inquiry, self.evidence = map(URIRef, ("urn:fixture:inquiry", "urn:fixture:evidence"))
+        self.source, self.target = map(URIRef, ("urn:fixture:inquiry-doc", "urn:fixture:evidence-doc"))
+        self.predicate = URIRef("https://561.group/ns/predicate/produces")
+        self.predicates = {"produces": str(self.predicate)}
+        self.documents = {self.source, self.target}
+        self.report = {"schema": "research-vocabulary.authored-relations.v1",
+                       "audience": "authenticated", "unresolved": [], "assertions": [{
+                           "subject": str(self.inquiry), "predicate": str(self.predicate),
+                           "object": str(self.evidence), "source": str(self.source),
+                           "targetSource": str(self.target), "field": "produces", "rawValue": "evidence",
+                       }]}
+        for concept, document in ((self.inquiry, self.source), (self.evidence, self.target)):
+            reviewed.add((concept, RDF.type, SKOS.Concept))
+            reviewed.add((concept, RDFS.isDefinedBy, document))
+        self.owner = URIRef("urn:fixture:owner-witness")
+        self.owner_edge = (self.inquiry, self.predicate, self.evidence)
+        self.authored.add(self.owner_edge)
+        vocab = self.ns + "glossary-vocabulary:"
+        self.raw = URIRef(vocab + "rawTarget")
+        self.target_predicate = URIRef(vocab + "target")
+        self.owner_properties = (
+            (RDF.type, URIRef(vocab + "AuthoredRelationObservation")),
+            (DCTERMS.source, self.source), (URIRef(vocab + "predicateKey"), Literal("produces")),
+            (self.raw, Literal("evidence")),
+            (URIRef(vocab + "projectionStatus"), Literal("admitted-carrier")),
+            (self.target_predicate, self.evidence),
+        )
+        for predicate, value in self.owner_properties:
+            self.authored.add((self.owner, predicate, value))
+        # The same predicate also has a legitimate Term document-level
+        # projection. It does not belong to the reviewed owner comparison.
+        other = URIRef("urn:fixture:term-witness")
+        self.authored.add((self.target, self.predicate, self.source))
+        for predicate, value in self.owner_properties:
+            self.authored.add((other, predicate, self.target if predicate == DCTERMS.source
+                               else self.source if predicate == self.target_predicate else value))
+
+    def verify(self):
+        return verify_owner_assertions(self.dataset, self.ns, self.documents, self.predicates, self.report)
+
+    def test_owner_replay_does_not_consume_term_document_projection(self):
+        self.assertEqual(self.verify(), 1)
+
+    def test_extra_reverse_assertion_refuses_even_with_complete_positive_evidence(self):
+        self.authored.add((self.evidence, self.predicate, self.inquiry))
+        with self.assertRaisesRegex(ValueError, "owner assertions differ"):
+            self.verify()
+
+    def test_source_value_disagreement_refuses_even_when_exact_typed_edge_survives(self):
+        from rdflib import Literal
+
+        self.authored.set((self.owner, self.raw, Literal("unrelated-value")))
+        with self.assertRaisesRegex(ValueError, "witnesses differ"):
+            self.verify()
+
+    def test_valid_duplicate_witness_is_not_lost_in_rdf_set_comparison(self):
+        from rdflib import URIRef
+
+        duplicate = URIRef("urn:fixture:duplicate")
+        for predicate, value in self.owner_properties:
+            self.authored.add((duplicate, predicate, value))
+        with self.assertRaisesRegex(ValueError, "witnesses differ"):
+            self.verify()
+
+
+if __name__ == "__main__":
+    unittest.main()
