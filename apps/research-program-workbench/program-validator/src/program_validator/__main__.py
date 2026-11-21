@@ -21,6 +21,7 @@ HARD_CODES = {
     "frontmatter-parse",
     "frontmatter-kind",
     "corpus-directory",
+    "corpus-file",
     "slug-collision",
     "bib-error",
     "broken-link",
@@ -106,6 +107,7 @@ def compare_scope(current: Corpus, baseline: Corpus, *, run_lean: bool) -> dict:
         config = corpus.config
         inputs = {
             "lib_dirs": config.lib_dirs,
+            "files": config.files,
             "bib": config.bib,
             "min_body_chars": config.validate.min_body_chars,
         }

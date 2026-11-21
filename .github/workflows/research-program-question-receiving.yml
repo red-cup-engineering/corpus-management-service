@@ -128,4 +128,4 @@ jobs:
       - name: Qualify the installed glossary snapshot receiver
         run: |
           verify-glossary-snapshot --help
-          python -m unittest discover -s apps/research-program-workbench/research-corpus/tests -p test_glossary_snapshot.py -v
+          python -m unittest discover -s apps/research-program-workbench/research-corpus/tests -v

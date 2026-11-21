@@ -78,6 +78,24 @@ default. A narrative in a deeply nested teaching directory is therefore still a
 narrative, and a `type: question` still participates in the existing planner.
 Duplicate slugs remain hard errors rather than selecting one copy silently.
 
+
+Select an individual maintained Markdown note in a dated or otherwise nested
+directory without enrolling its neighbors:
+
+```toml
+[[corpus.files]]
+path = "content/text/documents/articles/notes/2026/02/03/example.md"
+default_kind = "note"
+```
+
+Each entry names an exact nonhidden, repository-relative `.md` file, not a
+directory, glob, or link. A missing or nonregular member is reported as a
+`corpus-file` validation error, as is a symbolic-link component. Overlapping
+selections read a path once. The explicit default overrides leaf-directory
+inference, but never an authored `type` or `kind`. Changing exact selections or
+their defaults is a validator scope change even if the same files are present.
+This enrollment does not add vocabulary members or crawl citations.
+
 Local inline Markdown links are resolved from the source file's directory.
 `../../../glossary/terms/relating.md` must name that exact file; another
 `relating.md` elsewhere cannot satisfy it. Existing local navigation files may
@@ -138,7 +156,8 @@ members = [
 ]
 ```
 
-Each member must be an exact path already indexed by `[corpus].lib_dirs`. A
+Each member must be an explicitly listed vocabulary path already indexed by
+`[corpus].lib_dirs` or `[[corpus.files]]`. A
 matching filename elsewhere cannot supply the source. The selection controls
 only this vocabulary projection; it does not remove unselected notes or their
 diagnostics from whole-corpus validation. Configurations without `[vocabulary]`
