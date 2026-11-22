@@ -140,9 +140,12 @@ The Python `authored` stage checks each stored relation observation against
 its exact pinned Markdown file, whether its value was projected to a carrier,
 projected as a literal, or retained without a target. It requires the original
 plain string under the named top-level or nested `relations` field and checks
-the total and both projection counts. The separate reviewed-relation replay
-checks selected concept edges. Lexical custody does not establish that every
-authored field was retained or independently re-run Term target admission.
+the total and both projection counts. The same stage compares the direct Term statement set with the admitted
+document and literal witnesses in both directions. Missing, reversed or
+unwitnessed statements are refused even when the original Markdown wording
+checks out. Selected concept statements instead use the independent owner
+replay. These checks do not prove that every authored field was retained
+or independently re-run Term target admission.
 
 A saved-query reader opens the same verified buffer once and pins the
 receiving Git commit. Use `receiver.open_saved_queries()`, then

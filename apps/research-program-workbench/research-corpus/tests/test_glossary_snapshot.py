@@ -473,7 +473,7 @@ class AlternateProfileReceiving(unittest.TestCase):
             output = "cache/dataset.nq"
             paths = ["notebooks/terms/cell.md", "notebooks/terms/tissue.md"]
             put(paths[0], "---\nname: Cell\ndescription: A test entry.\n"
-                          "part-of: tissue\nsee-also: unknown-fiber\nexample: authored example\n"
+                          "part-of: tissue\ndepends-on: tissue\nsee-also: unknown-fiber\nexample: authored example\n"
                           "relations:\n  local-field: [another-sense]\n---\n# Cell\n")
             put(paths[1], "---\nname: Tissue\ndescription: Another test entry.\n---\n# Tissue\n")
             put("research.toml", '[corpus]\nlib_dirs=["notebooks/terms"]\n[vocabulary]\n'
@@ -497,7 +497,12 @@ class AlternateProfileReceiving(unittest.TestCase):
             v = prefix + "glossary-vocabulary:"
             cell, tissue = prefix + "term:cell", prefix + "term:tissue"
             witness = "<urn:example:owned-witness>"
-            lines = [f"<{cell}> <urn:example:part-of> <{tissue}> {graph} ."]
+            cell_doc, tissue_doc = (f"<{base}main/{path}>" for path in paths)
+            term = "https://561.group/ns/predicate/"
+            direct_dependency = f"{cell_doc} <{term}depends-on> {tissue_doc} {graph} ."
+            direct_example = f'{cell_doc} <{term}example> "authored example" {graph} .'
+            lines = [f"<{cell}> <urn:example:part-of> <{tissue}> {graph} .",
+                     direct_dependency, direct_example]
             lines.extend(f"{witness} <{pred}> {value} {graph} ." for pred, value in (
                 ("http://www.w3.org/1999/02/22-rdf-syntax-ns#type", f"<{v}AuthoredRelationObservation>"),
                 ("http://purl.org/dc/terms/source", f"<{base}main/{paths[0]}>"),
@@ -508,6 +513,7 @@ class AlternateProfileReceiving(unittest.TestCase):
                 ("see-also", "unknown-fiber", "observed-unprojected"),
                 ("local-field", "another-sense", "observed-unprojected"),
                 ("example", "authored example", "admitted-literal"),
+                ("depends-on", "tissue", "admitted-carrier"),
             ):
                 observation = f"<urn:example:witness:{field}>"
                 lines.extend(f"{observation} <{pred}> {value} {graph} ." for pred, value in (
@@ -516,6 +522,8 @@ class AlternateProfileReceiving(unittest.TestCase):
                     (v + "predicateKey", json.dumps(field)), (v + "rawTarget", json.dumps(raw_value)),
                     (v + "projectionStatus", json.dumps(status)),
                 ))
+                if field == "depends-on":
+                    lines.append(f"{observation} <{v}target> {tissue_doc} {graph} .")
             reviewed = Graph().parse(root / "settings/review.ttl", format="turtle")
             lines.extend(f"{s.n3()} {p.n3()} {o.n3()} <{prefix}graph:reviewed-vocabulary> ."
                          for s, p, o in reviewed)
@@ -525,7 +533,7 @@ class AlternateProfileReceiving(unittest.TestCase):
                 lines.extend(f"{uri} <{pred}> {value} {graph} ." for pred, value in (
                     ("http://www.w3.org/1999/02/22-rdf-syntax-ns#type", "<https://schema.org/DigitalDocument>"),
                     (v + "path", json.dumps(path)), (v + "gitBlob", json.dumps(git("rev-parse", src + ":" + path))),
-                    (v + "termSchemaStatus", '"admitted"' if path == paths[0] else '"not-admitted"'),
+                    (v + "termSchemaStatus", '"admitted"'),
                     ("http://www.w3.org/ns/prov#wasDerivedFrom", f"<{base}{src}/{path}>"),
                 ))
             raw = ("\n".join(lines) + "\n").encode()
@@ -536,8 +544,8 @@ class AlternateProfileReceiving(unittest.TestCase):
                 "artifact": {"path": snapshot, "sha256": hashlib.sha256(raw).hexdigest(),
                              "compressedSha256": hashlib.sha256(packed).hexdigest(), "quads": len(lines)},
                 "coverage": {"audience": "authenticated", "trackedGlossaryMarkdown": 2, "projectedDocuments": 2,
-                             "termSchemaAdmitted": 1, "termSchemaNotAdmitted": 1,
-                             "authoredObservations": 4, "projectedAuthoredObservations": 2,
+                             "termSchemaAdmitted": 2, "termSchemaNotAdmitted": 0,
+                             "authoredObservations": 5, "projectedAuthoredObservations": 3,
                              "unprojectedAuthoredObservations": 2},
                 "source": {"commit": src, "contentTree": git("rev-parse", src + ":notebooks"),
                            "inputs": {name: git("rev-parse", src + ":" + name)
@@ -550,14 +558,20 @@ class AlternateProfileReceiving(unittest.TestCase):
             for stage in ("prepare", "evidence", "authored"):
                 result = python("research_corpus.glossary_snapshot", stage, *args)
             self.assertIn("Verified 1 reviewed concept assertions", result)
-            self.assertIn("Verified original field values for all 4 authored observations (2 unprojected).", result)
+            self.assertIn("Verified original field values for all 5 authored observations (2 unprojected).", result)
 
             # Even when the tracked archive, prepared bytes and digests agree,
             # neither unresolved strings nor projected values may lose custody.
             original_record = json.loads((root / manifest).read_text("utf-8"))
-            for original, substituted in (
-                (b'"unknown-fiber"', b'"another-fiber"'),
-                (b'"authored example"', b'"other example"'),
+            mismatch = "RDF Term document statements differ from their authored witnesses"
+            for original, substituted, expected in (
+                (b'"unknown-fiber"', b'"another-fiber"', "RDF authorship differs from the pinned field value"),
+                (b'"authored example"', b'"other example"', "RDF authorship differs from the pinned field value"),
+                ((direct_dependency + "\n").encode(), b"", mismatch),
+                (direct_example.encode(), direct_example.replace("authored example", "different literal").encode(), mismatch),
+                (direct_dependency.encode(),
+                 (direct_dependency + "\n" + f"{tissue_doc} <{term}depends-on> {cell_doc} "
+                  f"<{prefix}graph:authored-assertions> .").encode(), mismatch),
             ):
                 with self.subTest(value=original):
                     changed = raw.replace(original, substituted)
@@ -571,7 +585,7 @@ class AlternateProfileReceiving(unittest.TestCase):
                     put(manifest, json.dumps(record))
                     with self.assertRaises(subprocess.CalledProcessError) as error:
                         python("research_corpus.glossary_snapshot", "authored", *args)
-                    self.assertIn("RDF authorship differs from the pinned field value", error.exception.stderr)
+                    self.assertIn(expected, error.exception.stderr)
 
 
 class OwnerAssertionReplay(unittest.TestCase):
