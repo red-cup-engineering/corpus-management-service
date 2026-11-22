@@ -15,6 +15,7 @@ import re
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
+import tomllib
 from urllib.parse import quote
 from typing import TYPE_CHECKING
 
@@ -77,6 +78,42 @@ def glossary_catalog(catalog, profile):
     prefix = exact_path(profile["glossaryRoot"]) + "/"
     return {name: oid for name, oid in catalog.items()
             if name.startswith(prefix) and name.endswith(".md")}
+
+
+def _same_toml(left, right):
+    """Compare parsed TOML without equating different scalar types."""
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return left.keys() == right.keys() and all(_same_toml(left[key], right[key]) for key in left)
+    if isinstance(left, list):
+        return len(left) == len(right) and all(_same_toml(a, b) for a, b in zip(left, right))
+    return left == right
+
+
+def _added_corpus_files(before: bytes, after: bytes):
+    """Admit additions to one explicit selector, not rewrites of the corpus policy."""
+    from .config import _corpus_files
+
+    configurations = [tomllib.loads(raw.decode("utf-8")) for raw in (before, after)]
+    selectors = []
+    for config in configurations:
+        corpus = config.get("corpus")
+        if not isinstance(corpus, dict):
+            return ()
+        files = _corpus_files(corpus.pop("files", []))
+        keys = {entry.path for entry in files}
+        if len(keys) != len(files):
+            return ()
+        selectors.append(files)
+
+    previous, current = selectors
+    if not _same_toml(*configurations):
+        return ()
+    additions = tuple(entry for entry in current if entry not in previous)
+    if tuple(entry for entry in current if entry not in additions) != previous:
+        return ()
+    return additions
 
 
 @dataclass(frozen=True)
@@ -143,12 +180,16 @@ class SnapshotReceiver:
         content = profile["contentRoot"]
         if object_id(self.root, source, content, {"040000"}) != expected["contentTree"]:
             raise ValueError("Manifest content tree does not match the claimed source commit")
+        deferred_enrollment = False
         for path, oid in expected["inputs"].items():
             if object_id(self.root, source, path, REGULAR) != oid:
                 raise ValueError(f"Manifest input does not match the claimed source: {path}")
             if object_id(self.root, receiving, path, REGULAR) != oid:
-                raise ValueError(f"Glossary snapshot is stale: build input changed: {path}")
-        if object_id(self.root, receiving, content, {"040000"}) != expected["contentTree"]:
+                if path != "research.toml":
+                    raise ValueError(f"Glossary snapshot is stale: build input changed: {path}")
+                deferred_enrollment = True
+        changed_content = object_id(self.root, receiving, content, {"040000"}) != expected["contentTree"]
+        if changed_content or deferred_enrollment:
             prior = content_catalog(self.root, source, profile)
             current = content_catalog(self.root, receiving, profile)
             # Link presence depends on the names of regular content files, not
@@ -169,7 +210,29 @@ class SnapshotReceiver:
                         more = f" (+{len(paths) - len(sample)} more)" if len(paths) > len(sample) else ""
                         detail.append(f"{label} ({len(paths)}): {shown}{more}")
                 raise ValueError("\n".join(detail))
+        if deferred_enrollment and not self._outside_glossary_enrollment(
+                source, receiving, profile, prior, current):
+            raise ValueError("Glossary snapshot is stale: build input changed: research.toml")
         return manifest, profile, source
+
+    def _outside_glossary_enrollment(self, source, receiving, profile, prior, current):
+        from .frontmatter import FrontmatterError, parse_note
+
+        before, after = (git(self.root, "cat-file", "blob", commit + ":research.toml")
+                         for commit in (source, receiving))
+        try:
+            additions = _added_corpus_files(before, after)
+            glossary = glossary_catalog(prior, profile)
+            stems = {PurePosixPath(path).stem for path in glossary}
+            for entry in additions:
+                path = entry.path
+                if (path not in prior or prior[path] != current.get(path) or path in glossary
+                        or PurePosixPath(path).stem in stems):
+                    return False
+                parse_note(git(self.root, "cat-file", "blob", receiving + ":" + path).decode("utf-8"))
+        except (UnicodeError, ValueError, FrontmatterError):
+            return False
+        return bool(additions)
 
     def prepare(self):
         manifest, _, _ = self.validated_context()

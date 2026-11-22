@@ -120,6 +120,15 @@ same graph with different code. A matching output does not make the measured
 producer identities interchangeable. These measurements do not attest the
 entire dependency tree, a Git revision, or release authorization.
 
+The original `research.toml` remains an exact source input in the receipt.
+At receiving time, a later commit may add explicit `corpus.files` selections
+for already tracked, unchanged Markdown documents outside the glossary without
+rebuilding the glossary. The new files must parse as frontmatter Markdown and
+must not share a filename stem with a glossary document. Existing selections,
+other configuration, glossary blobs, and the tracked content path inventory
+must stay the same. This is not a validation of the newly enrolled research
+claim, or a change to the artifact's original source identity.
+
 Each evidence, authored, and navigation stage reads the prepared output
 within the size limit and parses only the same bytes whose SHA-256 matches
 the selected manifest. Python query consumers can use the same boundary

@@ -43,7 +43,9 @@ class SnapshotGitEvidence(unittest.TestCase):
         self.write(SECOND_DOCUMENT, "Second glossary entry\n")
         self.write(INDEX_DOCUMENT, "Glossary index\n")
         self.write("content/other.md", "Other content\n")
-        self.write("research.toml", 'program = "test"\n')
+        self.write("content/already-tracked.md", "---\ntype: doc\n---\n# Research paper\n")
+        self.write("content/invalid.md", "No authored frontmatter\n")
+        self.write("research.toml", '[program]\ntitle = "test"\n[validate]\nmin_body_chars = 1\n[corpus]\nlib_dirs = []\n')
         self.write("data/schema/reviewed.ttl",
                    '<urn:fixture:concept> <urn:fixture:definition> "Original definition" ; '
                    '<urn:fixture:source> [ <urn:fixture:note> "Reviewed source" ] .\n')
@@ -220,6 +222,42 @@ class SnapshotGitEvidence(unittest.TestCase):
         self.commit("Revise other content")
         self.verify("prepare")
         self.verify("evidence")
+
+    def test_existing_unreviewed_paper_can_be_enrolled_without_rebuilding_glossary(self):
+        from research_corpus import load
+
+        path = "content/already-tracked.md"
+        self.assertNotIn(path, load(self.root).path_slugs)
+        config = (self.root / "research.toml").read_text()
+        self.write("research.toml", config + '\n[[corpus.files]]\npath = "' + path +
+                   '"\ndefault_kind = "doc"\n')
+        self.commit("Select an existing paper without changing glossary inputs")
+        self.assertEqual(self.git("diff", "--name-only", "HEAD^", "HEAD"), "research.toml")
+        corpus = load(self.root)
+        self.assertEqual(corpus[corpus.path_slugs[path]].kind, "doc")
+        self.verify("prepare")
+        self.verify("evidence")
+        self.assertEqual(hashlib.sha256((self.root / OUTPUT).read_bytes()).hexdigest(),
+                         self.record["artifact"]["sha256"])
+        self.assertEqual(self.record["source"]["inputs"]["research.toml"],
+                         self.git("rev-parse", self.source + ":research.toml"))
+
+    def test_enrollment_exception_refuses_collision_and_other_config_changes(self):
+        config = (self.root / "research.toml").read_text()
+        stale = "Glossary snapshot is stale: build input changed: research.toml"
+        for path, other in (
+            ("content/other.md", config),
+            ("content/invalid.md", config),
+            ("content/missing.md", config),
+            ("content/already-tracked.md", config.replace('title = "test"', 'title = "changed"')),
+            ("content/already-tracked.md", config.replace('min_body_chars = 1', 'min_body_chars = true')),
+        ):
+            with self.subTest(path=path, other=other):
+                self.write("research.toml", other + '\n[[corpus.files]]\npath = "' + path +
+                           '"\ndefault_kind = "doc"\n')
+                self.commit("Try changing the receiving corpus")
+                self.verify("prepare", failure=stale)
+                self.assertFalse((self.root / OUTPUT).exists())
 
     def test_direct_reader_receives_the_prepared_named_graph(self):
         self.verify("prepare")
