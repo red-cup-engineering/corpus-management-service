@@ -35,6 +35,8 @@ function fixture(t) {
     mkdirSync(dirname(target),{recursive:true});
     writeFileSync(target,text);
   }
+  const renderVocabulary=()=>execFileSync("python3",["-B","-m","research_corpus.vocabulary","--root",root],
+    {stdio:["ignore","pipe","pipe"]});
   const git=(args)=>execFileSync("git",["-C",root,...args],{stdio:["ignore","pipe","pipe"],encoding:"utf8"}).trim();
   const commit=()=>{
     git(["add","--","."]);
@@ -44,17 +46,17 @@ function fixture(t) {
   git(["init","--object-format=sha1"]);
   write(first,"---\nidentity: first\nname: First\ndescription: An admitted concept\nresult-concept: second\n---\n\n[See second](second.md).\n\n[Do not link held](held.md).\n");
   write(second,"---\nidentity: second\nname: Second\ndescription: An admitted result\n---\n\nAn independently defined result.\n");
-  write(child,"---\nidentity: held\nname: Held\nconsent-status: withheld\n---\n\nThis carrier is outside the audience.\n");
+  write(child,"---\nidentity: held\nname: Held\ndescription: A withheld concept\nconsent-status: withheld\n---\n\nThis carrier is outside the audience.\n");
   write("content/text/glossary/README.md","# Glossary navigation\n");
   write("research.toml",`[program]\ntitle="Fixture"\n[corpus]\nlib_dirs=["content/text/glossary/terms"]\n[vocabulary]\nscheme="${namespace}scheme"\nnamespace="${concept}"\ndocument_base_url="${rootUrl}"\noutput="data/reviewed.ttl"\nmembers=["${first}","${second}"]\n`);
   write(profilePath,JSON.stringify(profile));
   write(profile.authoredRelations,JSON.stringify({formatVersion:1,relations:{"result-concept":vocabulary+"resultConcept"}}));
-  write(profile.reviewedVocabulary,`@prefix skos: <http://www.w3.org/2004/02/skos/core#> .\n@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n<${concept}first> a skos:Concept ; rdfs:isDefinedBy <${rootUrl+first}> .\n<${concept}second> a skos:Concept ; rdfs:isDefinedBy <${rootUrl+second}> .\n`);
   write(profile.datasetConformance,JSON.stringify({formatVersion:1,dataset:{file:"build/dataset.nq",shapes:["data/shape.ttl"],ask:[{id:"authored",query:"data/ask.rq",expect:true}]}}));
   write("data/shape.ttl",`@prefix sh: <http://www.w3.org/ns/shacl#> .\n<${namespace}shape> a sh:NodeShape ; sh:targetSubjectsOf <${vocabulary}resultConcept> ; sh:class <http://www.w3.org/2004/02/skos/core#Concept> .\n`);
   const authoredEdge=`<${concept}first> <${vocabulary}resultConcept> <${concept}second> .`;
   write("data/ask.rq",`ASK { GRAPH <${namespaceGraph}authored-assertions> { ${authoredEdge} } FILTER NOT EXISTS { GRAPH ?elsewhere { ${authoredEdge} } FILTER(?elsewhere != <${namespaceGraph}authored-assertions>) } }\n`);
-  return {root, parent, write, commit, args:{repository:root,profile:profilePath,audience:"authenticated",output:join(parent,"accepted")}};
+  renderVocabulary();
+  return {root, parent, write, commit, renderVocabulary, args:{repository:root,profile:profilePath,audience:"authenticated",output:join(parent,"accepted")}};
 }
 
 test("native navigation replay reads the exact Git cut, not a fabricated receiver observation", t=>{
@@ -87,6 +89,7 @@ test("native immutable Git → Workbench → RDF → independent named ASK and S
   const {root,write,commit,args}=fixture(t);
   const revision=commit();
   write(first,"worktree-only modification must not become an input");
+  write(profile.reviewedVocabulary,"worktree-only stale Turtle");
   const out=await buildGlossaryDataset({...args,revision});
   const bytes=readFileSync(join(out.destination,"build/dataset.nq"),"utf8");
   const source=JSON.parse(readFileSync(join(out.destination,"source.json")));
@@ -147,10 +150,47 @@ test("native immutable Git → Workbench → RDF → independent named ASK and S
   await assert.rejects(buildGlossaryDataset({...args,revision}),/already exists/);
 });
 
+test("refuses stale pinned reviewed Turtle even when the dirty worktree has regenerated it",async t=>{
+  const {root,write,commit,renderVocabulary,args}=fixture(t);
+  const turtle=join(root,profile.reviewedVocabulary);
+  const previous=readFileSync(turtle);
+  const original=readFileSync(join(root,first),"utf8");
+  // New verified provenance changes only the reviewed Turtle, not the authored relation.
+  write(first,original.replace("result-concept: second","result-concept: second\n"+
+    "provenance:\n  sources: [https://example.invalid/original.md]"));
+  const revision=commit();
+  renderVocabulary();
+  const corrected=readFileSync(turtle);
+  assert.notDeepEqual(corrected,previous);
+  await assert.rejects(buildGlossaryDataset({...args,revision}),{
+    message:/required native stage failed: research_corpus\.vocabulary[^]*missing or stale output/,
+  });
+  assert.equal(existsSync(args.output),false);
+  assert.deepEqual(readFileSync(turtle),corrected);
+
+  // Inverting the dirty state exercises the real producer on fresh tracked bytes.
+  const fresh=commit();
+  write(profile.reviewedVocabulary,previous);
+  const out=await buildGlossaryDataset({...args,revision:fresh});
+  const nquads=readFileSync(join(out.destination,"build/dataset.nq"),"utf8");
+  assert.ok(nquads.includes("<http://www.w3.org/ns/prov#wasDerivedFrom> <https://example.invalid/original.md>"));
+  assert.deepEqual(readFileSync(turtle),previous);
+});
+
+test("a byte-identical Turtle copy at a different profile path does not satisfy the vocabulary check",async t=>{
+  const {root,write,commit,args}=fixture(t);
+  const other="data/not-the-configured-output.ttl";
+  write(other,readFileSync(join(root,profile.reviewedVocabulary)));
+  write(profilePath,JSON.stringify({...profile,reviewedVocabulary:other}));
+  await assert.rejects(buildGlossaryDataset({...args,revision:commit()}),
+    /vocabulary.output differs from the expected reviewed vocabulary path/);
+  assert.equal(existsSync(args.output),false);
+});
+
 test("negative named graph control cannot promote a dataset",async t=>{
   const {write,commit,args}=fixture(t);
   write("data/ask.rq",`ASK { GRAPH <${namespaceGraph}navigation> { <${concept}first> <${vocabulary}resultConcept> <${concept}second> } }\n`);
-  await assert.rejects(buildGlossaryDataset({...args,revision:commit()}),/required native stage failed: -m/);
+  await assert.rejects(buildGlossaryDataset({...args,revision:commit()}),/required native stage failed: rdf_vocabulary_conformance/);
   assert.equal(existsSync(args.output),false);
 });
 
@@ -167,29 +207,23 @@ test("scope, transport and audience preconditions fail closed",async t=>{
 });
 
 test("do not disclose reviewed concepts whose defining documents are withheld",async t=>{
-  const {write,commit,args}=fixture(t);
-  write(profile.reviewedVocabulary,
-    `@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
-@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-<${concept}first> a skos:Concept ; rdfs:isDefinedBy <${rootUrl+first}> .
-<${concept}second> a skos:Concept ; rdfs:isDefinedBy <${rootUrl+second}> .
-<${concept}held> a skos:Concept ; rdfs:isDefinedBy <${rootUrl+child}> .
-`);
+  const {root,write,commit,renderVocabulary,args}=fixture(t);
+  const config=readFileSync(join(root,"research.toml"),"utf8");
+  write("research.toml",config.replace(`"${second}"]`,`"${second}","${child}"]`));
+  renderVocabulary();
   await assert.rejects(buildGlossaryDataset({...args,revision:commit()}),/reviewed vocabulary .* outside the selected audience/);
   assert.equal(existsSync(args.output),false);
 });
 
 test("an owner-authored list stays complete and is not downgraded by strict Term observation",async t=>{
-  const {root,write,commit,args}=fixture(t);
+  const {root,write,commit,renderVocabulary,args}=fixture(t);
   const third="content/text/glossary/terms/third.md";
   write(third,"---\nidentity: third\nname: Third\ndescription: Another reviewed result\n---\n");
   const original=readFileSync(join(root,first),"utf8");
   write(first,original.replace("result-concept: second","depends-on: [second, third]"));
   const originalConfig=readFileSync(join(root,"research.toml"),"utf8");
   write("research.toml",originalConfig.replace(`"${second}"]`,`"${second}","${third}"]`));
-  const originalCore=readFileSync(join(root,profile.reviewedVocabulary),"utf8");
-  write(profile.reviewedVocabulary,originalCore+
-    `<${concept}third> a skos:Concept ; rdfs:isDefinedBy <${rootUrl+third}> .\n`);
+  renderVocabulary();
   const predicate="https://561.group/ns/predicate/depends-on";
   write(profile.authoredRelations,JSON.stringify({formatVersion:1,relations:{"depends-on":predicate}}));
   const edges=["second","third"].map(target=>`<${concept}first> <${predicate}> <${concept+target}> .`).join(" ");

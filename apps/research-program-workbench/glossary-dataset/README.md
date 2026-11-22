@@ -37,8 +37,8 @@ claim or classifies all glossary notes as reviewed concepts.
   [0.6.0-dev.0](https://github.com/red-cup-engineering/markdown-engineering-services-section/tree/9e69aa588317cae2c505c097ee0ce32180f6000c)
   for the earlier Relationality receipt.
 - One Python 3.12+ environment with the original [Research
-  Corpus](https://github.com/red-cup-engineering/corpus-management-service/tree/0cea49d462f17b7b73bde380cc36d3a2c5a79d8e/apps/research-program-workbench/research-corpus)
-  (the authored-relations profile command), the original [RDF
+  Corpus](../research-corpus) (the matching Workbench source package, with
+  the authored-relations and bound vocabulary-check commands), the original [RDF
   Conformance](https://github.com/red-cup-engineering/rdf-vocabulary-conformance-service/tree/25d5c2432aa38ada297acfae3dcdc49aac6aedab)
   (dataset.ask and dataset.shacl), and its pinned RDFLib. Build and install
   these from the cited source revisions where issued artifacts are not
@@ -51,9 +51,16 @@ navigation), original Turtle, authored relation profile, and dataset
 conformance config. That commit supplies every selected glossary blob,
 research.toml, the exact shapes, and the exact ASK query. The Workbench
 uses original frontmatter authority; Term's closed Engineering schema decides
-carrier admission independently. Reviewed assertions must match visible
-original document bytes and both reviewed SKOS endpoint bindings. No ad hoc
-command-line predicate or unpinned inventory is accepted.
+carrier admission independently. Before composing RDF, the original
+`research-vocabulary --check --expected-output PATH` verifies that
+`[vocabulary].output` selects the profile’s reviewed Turtle and that those
+pinned Turtle bytes exactly regenerate from the selected pinned glossary sources.
+This check never reads or rewrites the source checkout; regenerate stale
+Turtle and commit it before building. The Science receiving workflow still
+checks the reviewed vocabulary in its complete configured corpus. Reviewed
+assertions must match visible original document bytes and both reviewed SKOS
+endpoint bindings. No ad hoc command-line predicate or unpinned inventory is
+accepted.
 
 ## Receive a pinned source catalog
 

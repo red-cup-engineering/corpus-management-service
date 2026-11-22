@@ -121,6 +121,26 @@ members = ["concepts/act.md", "concepts/diagram.md"]
         self.assertEqual(self.cli("--check")[0], 0)
         self.assertEqual(self.act.read_bytes(), authored)
 
+    def test_check_binds_exact_output_and_never_writes(self):
+        self.assertEqual(self.cli()[0], 0)
+        output = self.root / "data" / "ontology.ttl"
+        prior = output.read_bytes()
+        copy = output.with_name("another.ttl")
+        copy.write_bytes(prior)
+        self.assertEqual(self.cli("--check", "--expected-output", "data/ontology.ttl")[0], 0)
+        for alias in ("data/another.ttl", "data/./ontology.ttl", "../ontology.ttl"):
+            with self.subTest(alias=alias):
+                code, _, error = self.cli("--check", "--expected-output", alias)
+                self.assertEqual(code, 2, error)
+                self.assertRegex(error, r"vocabulary.output differs|exact root-relative")
+                self.assertEqual(output.read_bytes(), prior)
+                self.assertEqual(copy.read_bytes(), prior)
+        self.act.write_text(self.act.read_text().replace("Describes a witnessed act.", "A corrected definition."))
+        code, _, error = self.cli("--check", "--expected-output", "data/ontology.ttl")
+        self.assertEqual(code, 1, error)
+        self.assertIn("missing or stale output", error)
+        self.assertEqual(output.read_bytes(), prior)
+
     def test_malformed_structured_source_does_not_replace_reviewed_turtle(self):
         self.assertEqual(self.cli()[0], 0)
         output = self.root / "data" / "ontology.ttl"

@@ -315,9 +315,13 @@ def main(argv: list[str] | None = None) -> int:
     modes.add_argument("--check", action="store_true", help="compare expected bytes without writing")
     modes.add_argument("--authored-relations", metavar="PROFILE.json",
                        help="emit only the selected profile's source assertions as JSON")
+    parser.add_argument("--expected-output", metavar="PATH",
+                        help="with --check, require this exact root-relative Turtle output")
     parser.add_argument("--audience", choices=("public", "authenticated"),
                         help="required explicit audience for the authored-relations view")
     args = parser.parse_args(argv)
+    if args.expected_output is not None and not args.check:
+        parser.error("--expected-output is only used with --check")
     try:
         root = args.root.resolve() if args.root else find_root()
         config = load_config(root)
@@ -329,8 +333,12 @@ def main(argv: list[str] | None = None) -> int:
             return 1 if evidence["unresolved"] else 0
         if args.audience is not None:
             parser.error("--audience is only used with --authored-relations")
-        expected = render(corpus)
         target = output_path(corpus)
+        if args.expected_output is not None:
+            relative = _relative_path(args.expected_output, "expected vocabulary output", ".ttl")
+            if target.relative_to(corpus.root.resolve()) != relative:
+                raise VocabularyError("vocabulary.output differs from the expected reviewed vocabulary path")
+        expected = render(corpus)
         if args.check:
             if not target.is_file() or target.read_bytes() != expected:
                 print(f"research-vocabulary: missing or stale output: {target}", file=sys.stderr)

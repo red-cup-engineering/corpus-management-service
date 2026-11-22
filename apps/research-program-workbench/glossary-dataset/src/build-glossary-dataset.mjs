@@ -9,11 +9,13 @@ import { createSnapshotReceipt, observeNodeProviders } from "./snapshot-receipt.
 
 const decoder = new TextDecoder("utf-8", {fatal:true,ignoreBOM:true});
 const json = (bytes)=>JSON.parse(decoder.decode(bytes));
-function runJson(python, args) {
+function runPython(python, args) {
   const process = spawnSync(python, ["-B", ...args], {encoding:"utf8",timeout:120_000,maxBuffer:16*1024*1024});
-  if (process.error || process.status !== 0) throw new Error(`required native stage failed: ${args[0]} (${process.status ?? process.error?.name})\n${(process.stderr ?? "").slice(-2000)}`);
-  return JSON.parse(process.stdout);
+  const stage = args[0] === "-m" ? args[1] : args[0];
+  if (process.error || process.status !== 0) throw new Error(`required native stage failed: ${stage} (${process.status ?? process.error?.name})\n${(process.stderr ?? "").slice(-2000)}`);
+  return process.stdout;
 }
+const runJson = (python, args) => JSON.parse(runPython(python, args));
 function safeRelative(path) {
   if (!safePath(path)) throw new TypeError(`invalid relative source/output path: ${path}`);
   return path;
@@ -49,6 +51,10 @@ export async function buildGlossaryDataset({repository,revision,profile:profileP
     const conformance = source.read(profile.datasetConformance);
     const inputBlobs = [sourceProfile,config,ontology,authoredProfile,conformance];
     for (const entry of [config,ontology,authoredProfile,conformance]) write(work,entry.path,entry.bytes);
+    // Use the original renderer in non-writing mode over the pinned scratch.
+    // A fresh file at any other configured path cannot qualify this input.
+    runPython(python, ["-m","research_corpus.vocabulary","--root",work,"--check",
+      `--expected-output=${profile.reviewedVocabulary}`]);
     const acceptance = json(conformance.bytes);
     if (acceptance.formatVersion !== 1 || !Array.isArray(acceptance.dataset?.shapes) || !acceptance.dataset.shapes.length || !Array.isArray(acceptance.dataset?.ask) || !acceptance.dataset.ask.length) throw new Error("Science dataset acceptance must select both SHACL shapes and named-graph ASK queries");
     const datasetPath = safeRelative(acceptance.dataset.file);
