@@ -119,12 +119,13 @@ with `SnapshotReceiver(...).load_prepared_dataset()` rather than opening
 the prepared path directly. This verifies the bytes and current pinned
 Git inputs; it does not sign the manifest or establish scientific truth.
 
-The Python `authored` stage also independently checks each retained
-`observed-unprojected` value against its exact pinned Markdown file. It
-requires one original plain string from the named top-level or nested
-`relations` field, and checks the retained observation count. This is
-a check of what was written, not a replay of Term admission, a guarantee
-that every authored field was retained, or a claim about its target.
+The Python `authored` stage checks each stored relation observation against
+its exact pinned Markdown file, whether its value was projected to a carrier,
+projected as a literal, or retained without a target. It requires the original
+plain string under the named top-level or nested `relations` field and checks
+the total and both projection counts. The separate reviewed-relation replay
+checks selected concept edges. Lexical custody does not establish that every
+authored field was retained or independently re-run Term target admission.
 
 A saved-query reader opens the same verified buffer once and pins the
 receiving Git commit. Use `receiver.open_saved_queries()`, then
