@@ -1,7 +1,7 @@
 {
   "name": "@red-cup-engineering/research-glossary-dataset",
   "private": true,
-  "version": "0.1.0-dev.4",
+  "version": "0.1.0-dev.5",
   "description": "Build the authenticated RDF dataset of a pinned Science glossary using the original Workbench, Markdown, Term and Triplet owners.",
   "type": "module",
   "engines": {
@@ -17,7 +17,7 @@
     "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
-    "@red-cup-engineering/markdown-engineering-services-section": "0.6.0-dev.0",
+    "@red-cup-engineering/markdown-engineering-services-section": "0.7.0-dev.1",
     "@red-cup-engineering/term-engineering-services-section": "0.3.8",
     "@red-cup-engineering/computer-triplet-serialized-content-engineering-services-section": "0.2.9",
     "@red-cup-engineering/git-engine": "0.1.11-dev.0"
