@@ -21,13 +21,21 @@ claim or classifies all glossary notes as reviewed concepts.
   the canonical registry and its [owner's runtime lock](https://github.com/red-cup-engineering/git-engine/blob/5618cc1c6b722179aa29d03b93e8176e059cd467/package-lock.json).
   Pass the actual resolved cohort through your established package acquisition
   process.
-- Markdown **0.6.0-dev.0**, from [merged source
-  9e69aa58](https://github.com/red-cup-engineering/markdown-engineering-services-section/tree/9e69aa588317cae2c505c097ee0ce32180f6000c)
-  ([Markdown #62](https://github.com/red-cup-engineering/markdown-engineering-services-section/pull/62)).
-  This source build has not been established as a clean registry receiving
-  path. Acquire its exact package through the original Markdown owner; do not
-  silently substitute issued 0.5.13. A changed observer version
-  needs to be qualified against the receiving corpus before adoption.
+- Markdown **0.7.0-dev.1**, from [merged source
+  fef72d8e](https://github.com/red-cup-engineering/markdown-engineering-services-section/tree/fef72d8e006831f1c67b5e0309e9506af731f627).
+  Use the Markdown owner's [private received codec and portable lock instructions](https://github.com/red-cup-engineering/markdown-engineering-services-section/blob/fef72d8e006831f1c67b5e0309e9506af731f627/README.md#L434-L444).
+  The [qualification run](https://github.com/red-cup-engineering/markdown-engineering-services-section/actions/runs/44960946961)
+  retained its exact `codec.tgz`, lock, and receipt. Verify the actual receipt
+  and archive SHA-256 `aa37aa1ed746780cb2acd3a024e91ea9908288be898815e6c8daa9faadf348ac`,
+  then install that codec's own lock in a clean private directory. Keep Term's
+  separately resolved Markdown dependency intact; changing which codec it
+  loads is a distinct receiving change. This artifact expires and is not an
+  npm release. If unavailable, qualify the exact owning source and lock
+  again through the Markdown owner's native process; do not substitute the
+  registry stable release or use an unqualified tarball. For a historical
+  manifest use its recorded provider, including
+  [0.6.0-dev.0](https://github.com/red-cup-engineering/markdown-engineering-services-section/tree/9e69aa588317cae2c505c097ee0ce32180f6000c)
+  for the earlier Relationality receipt.
 - One Python 3.12+ environment with the original [Research
   Corpus](https://github.com/red-cup-engineering/corpus-management-service/tree/0cea49d462f17b7b73bde380cc36d3a2c5a79d8e/apps/research-program-workbench/research-corpus)
   (the authored-relations profile command), the original [RDF
