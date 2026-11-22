@@ -270,6 +270,39 @@ class SnapshotGitEvidence(unittest.TestCase):
         ))
         self.assertEqual([str(row[0]) for row in rows], ["Original definition"])
 
+    def test_cli_select_uses_one_committed_archive_and_no_prepared_output(self):
+        query = "data/schema/reviewed-select.rq"
+        text = ("SELECT ?definition WHERE { GRAPH <urn:fixture:vocab:graph:reviewed-vocabulary> "
+                "{ ?focus <urn:fixture:definition> ?definition } }")
+        self.write(query, text)
+        self.commit("Add saved SELECT")
+        args = [sys.executable, "-m", "research_corpus.glossary_snapshot", "select",
+                "--root", str(self.root), "--profile", PROFILE, "--manifest", MANIFEST,
+                "--snapshot", SNAPSHOT, "--query", query,
+                "--iri", "focus=urn:fixture:concept", "--literal", "definition=Original definition"]
+
+        # The working copies are not a query data source.
+        self.write(query, "not the committed SELECT")
+        self.write(SNAPSHOT, b"not the committed archive")
+        self.write(MANIFEST, "{}")
+        result = subprocess.check_output(args, cwd=self.root, env=self.env)
+        self.assertEqual(json.loads(result)["results"]["bindings"],
+                         [{"definition": {"type": "literal", "value": "Original definition"}}])
+        self.assertFalse((self.root / OUTPUT).exists())
+        duplicate = subprocess.run(args + ["--literal", "focus=duplicate"], cwd=self.root,
+                                   env=self.env, capture_output=True, text=True)
+        self.assertNotEqual(duplicate.returncode, 0)
+        self.assertIn("unique typed bindings", duplicate.stderr)
+
+        # Changing that same archive in Git is material even if a worktree
+        # could supply an unrelated, successful copy.
+        self.git("add", SNAPSHOT)
+        self.git("commit", "-qm", "Change committed archive without its receipt")
+        changed = subprocess.run(args, cwd=self.root, env=self.env, capture_output=True, text=True)
+        self.assertNotEqual(changed.returncode, 0)
+        self.assertIn("Compressed glossary SHA-256 differs from its manifest", changed.stderr)
+        self.assertFalse((self.root / OUTPUT).exists())
+
     def test_saved_select_uses_one_receiving_cut_and_typed_bindings(self):
         from rdflib import URIRef
 

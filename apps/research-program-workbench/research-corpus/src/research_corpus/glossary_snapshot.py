@@ -67,6 +67,31 @@ def object_id(root, revision, path, modes):
     return record[1]
 
 
+def read_regular_git_blob(root, revision, path, limit, label):
+    """Read one bounded regular Git object at an exact committed path."""
+    blob = object_id(root, revision, path, REGULAR)
+    size = int(git(root, "cat-file", "-s", blob))
+    if size > limit:
+        raise ValueError(f"{label} exceeds the input byte limit")
+    data = git(root, "cat-file", "blob", blob)
+    if len(data) != size:
+        raise ValueError(f"{label} bytes differ from the pinned Git object length")
+    return data
+
+
+def decode_snapshot(compressed, artifact):
+    """Verify both representations of one bounded N-Quads snapshot."""
+    if len(compressed) > LIMIT:
+        raise ValueError("Compressed glossary exceeds the snapshot size limit")
+    if hashlib.sha256(compressed).hexdigest() != artifact["compressedSha256"]:
+        raise ValueError("Compressed glossary SHA-256 differs from its manifest")
+    with gzip.GzipFile(fileobj=BytesIO(compressed), mode="rb") as stream:
+        data = stream.read(LIMIT + 1)
+    if len(data) > LIMIT or hashlib.sha256(data).hexdigest() != artifact["sha256"]:
+        raise ValueError("Uncompressed glossary exceeds the limit or differs from its manifest")
+    return data
+
+
 def content_catalog(root, revision, profile):
     rows = entries(root, revision, profile["contentRoot"], recursive=True)
     prefix = exact_path(profile["glossaryRoot"]) + "/"
@@ -125,7 +150,7 @@ class SnapshotReceiver:
     profile: str
     manifest: str
     snapshot: str
-    output: str
+    output: str | None
 
     def selected(self, name: str) -> Path:
         selected = self.root / exact_path(name)
@@ -144,8 +169,10 @@ class SnapshotReceiver:
             raise ValueError("A full receiving Git commit is required")
         return receiving
 
-    def source_context(self, receiving):
-        manifest = json.loads(self.selected(self.manifest).read_bytes())
+    def source_context(self, receiving, *, committed=False):
+        raw_manifest = (read_regular_git_blob(self.root, receiving, self.manifest, LIMIT, "Glossary manifest")
+                        if committed else self.selected(self.manifest).read_bytes())
+        manifest = json.loads(raw_manifest)
         profile = json.loads(git(self.root, "cat-file", "blob", receiving + ":" + self.profile))
         source = manifest["source"]["commit"]
         if not isinstance(source, str) or not re.fullmatch(r"[0-9a-f]{40}", source):
@@ -159,17 +186,18 @@ class SnapshotReceiver:
         return manifest, profile, source
 
 
-    def validated_context(self, receiving=None):
+    def validated_context(self, receiving=None, *, committed=False):
         """Admit the same source/profile and tracked inventory for every reader."""
         receiving = self.receiving_commit() if receiving is None else receiving
-        manifest, profile, source = self.source_context(receiving)
+        manifest, profile, source = self.source_context(receiving, committed=committed)
         artifact = manifest["artifact"]
         expected = manifest["source"]
         conformance = exact_path(profile["datasetConformance"])
         config = json.loads(git(self.root, "cat-file", "blob", receiving + ":" + conformance))
         if manifest.get("formatVersion") != 1 or artifact["path"] != self.snapshot:
             raise ValueError("Unexpected glossary manifest contract")
-        if config["dataset"]["file"] != self.output:
+        prepared = exact_path(config["dataset"]["file"])
+        if self.output is not None and prepared != self.output:
             raise ValueError("Dataset conformance does not select the prepared glossary")
         expected_inputs = {
             self.profile, "research.toml", profile["reviewedVocabulary"],
@@ -242,14 +270,7 @@ class SnapshotReceiver:
         # ceiling. Decode the exact bounded buffer whose digest was verified.
         with self.selected(self.snapshot).open("rb") as archive:
             compressed = archive.read(LIMIT + 1)
-        if len(compressed) > LIMIT:
-            raise ValueError("Compressed glossary exceeds the snapshot size limit")
-        if hashlib.sha256(compressed).hexdigest() != artifact["compressedSha256"]:
-            raise ValueError("Compressed glossary SHA-256 differs from its manifest")
-        with gzip.GzipFile(fileobj=BytesIO(compressed), mode="rb") as stream:
-            data = stream.read(LIMIT + 1)
-        if len(data) > LIMIT or hashlib.sha256(data).hexdigest() != artifact["sha256"]:
-            raise ValueError("Uncompressed glossary exceeds the limit or differs from its manifest")
+        data = decode_snapshot(compressed, artifact)
         build = self.selected(self.output)
         build.parent.mkdir(parents=True, exist_ok=True)
         with build.open("xb") as output:
@@ -281,6 +302,15 @@ class SnapshotReceiver:
         receiving = self.receiving_commit()
         manifest, _, _ = self.validated_context(receiving)
         return SavedGlossaryQueries(self.root, receiving, self._read_prepared_dataset(manifest))
+
+    def open_committed_saved_queries(self):
+        """Query only the committed snapshot and manifest; never prepare a file."""
+        receiving = self.receiving_commit()
+        manifest, _, _ = self.validated_context(receiving, committed=True)
+        compressed = read_regular_git_blob(
+            self.root, receiving, self.snapshot, LIMIT, "Compressed glossary")
+        data = decode_snapshot(compressed, manifest["artifact"])
+        return SavedGlossaryQueries(self.root, receiving, parse_nquads(data))
 
     def verify_evidence(self):
         from rdflib import Graph, Literal, RDF, URIRef
@@ -424,13 +454,7 @@ class SavedGlossaryQueries:
                 or any(not isinstance(name, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name)
                        or not isinstance(value, (URIRef, Literal)) for name, value in values.items())):
             raise ValueError("Saved SELECT bindings need variable names and RDF IRIs or literals")
-        blob = object_id(self.root, self.revision, query, REGULAR)
-        size = int(git(self.root, "cat-file", "-s", blob))
-        if size > MAX_QUERY_BYTES:
-            raise ValueError("Saved SELECT exceeds the input byte limit")
-        query_bytes = git(self.root, "cat-file", "blob", blob)
-        if len(query_bytes) != size:
-            raise ValueError("Saved SELECT bytes differ from the pinned Git object length")
+        query_bytes = read_regular_git_blob(self.root, self.revision, query, MAX_QUERY_BYTES, "Saved SELECT")
         prepared = prepare_local_select(query_bytes)
         return self.dataset.query(prepared, initBindings=dict(values), use_store_provided=False)
 
@@ -630,22 +654,53 @@ def verify_owner_assertions(dataset, namespace, documents, predicates, report):
     return len(expected_edges)
 
 
+def select_bindings(iris, literals):
+    from rdflib import Literal, URIRef
+    from urllib.parse import urlsplit
+
+    values = {}
+    for raw, value_type in [(v, URIRef) for v in iris] + [(v, Literal) for v in literals]:
+        name, separator, text = raw.partition("=")
+        if (not separator or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name)
+                or name in values or len(values) == 32):
+            raise ValueError("Specify at most 32 unique typed bindings as NAME=VALUE")
+        if value_type is URIRef and (
+                not urlsplit(text).scheme or re.search(r'[\s<>"{}|\\^`\x00-\x1f\x7f]', text)):
+            raise ValueError("An IRI binding requires an absolute RDF IRI")
+        values[name] = value_type(text)
+    return values
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("stage", choices=("prepare", "evidence", "authored", "navigation"))
+    parser.add_argument("stage", choices=("prepare", "evidence", "authored", "navigation", "select"))
     parser.add_argument("--root", default=Path.cwd(), type=Path, help="receiving Git worktree")
-    for name in ("profile", "manifest", "snapshot", "output"):
+    for name in ("profile", "manifest", "snapshot"):
         parser.add_argument("--" + name, required=True, type=exact_path, help="exact repository-relative path")
+    parser.add_argument("--output", type=exact_path, help="prepared N-Quads path for verification stages")
+    parser.add_argument("--query", type=exact_path, help="committed .rq file for select")
+    parser.add_argument("--iri", action="append", default=[], metavar="NAME=IRI")
+    parser.add_argument("--literal", action="append", default=[], metavar="NAME=TEXT")
+    parser.add_argument("--format", choices=("json", "csv"), help="select output format, default json")
     parser.add_argument("--navigation-replay", type=Path,
                         help="installed Workbench replay-glossary-navigation.mjs entrypoint")
     args = parser.parse_args(argv)
     if (args.stage == "navigation") != (args.navigation_replay is not None):
         parser.error("--navigation-replay is required for, and only valid with, the navigation stage")
+    if args.stage == "select":
+        if args.query is None or args.output is not None:
+            parser.error("select requires --query and does not use --output")
+    elif args.output is None or args.query or args.iri or args.literal or args.format:
+        parser.error("verification stages require --output; query and binding options are only for select")
     try:
         receiver = SnapshotReceiver(args.root.resolve(strict=True), args.profile, args.manifest,
                                     args.snapshot, args.output)
         if args.stage == "navigation":
             receiver.verify_navigation(args.navigation_replay)
+        elif args.stage == "select":
+            bindings = select_bindings(args.iri, args.literal)
+            results = receiver.open_committed_saved_queries().select(args.query, bindings=bindings)
+            sys.stdout.buffer.write(results.serialize(format=args.format or "json"))
         else:
             {"prepare": receiver.prepare, "evidence": receiver.verify_evidence,
              "authored": receiver.verify_authored}[args.stage]()
