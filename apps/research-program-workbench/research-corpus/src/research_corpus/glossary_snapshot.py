@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 LIMIT = 16 * 1024 * 1024
 REGULAR = {"100644", "100755"}
+TERM_PREDICATE_NAMESPACE = "https://561.group/ns/predicate/"
 
 
 def git(root, *args):
@@ -367,12 +368,14 @@ class SnapshotReceiver:
             )
             report = json.loads(replay)
             observations, unprojected = verify_authored_source_values(
-                dataset, namespace, document_paths, manifest["coverage"], root
+                dataset, namespace, document_paths, manifest["coverage"], root,
+                owner_predicates={URIRef(predicate) for predicate in predicates.values()},
             )
         count = verify_owner_assertions(dataset, namespace, set(document_paths), predicates, report)
         print(f"Verified {count} reviewed concept assertions and exact authored witnesses from pinned Git.")
         print(f"Verified original field values for all {observations} authored observations "
               f"({unprojected} unprojected).")
+        print("Verified direct Term document statements against their authored witnesses.")
 
 
     def verify_navigation(self, replay_entry):
@@ -477,11 +480,13 @@ def compare_navigation(actual, expected, namespace):
     return len(reference)
 
 
-def verify_authored_source_values(dataset, namespace, document_paths, coverage, root):
-    """Check lexical custody for every stored relation observation.
+def verify_authored_source_values(dataset, namespace, document_paths, coverage, root, *,
+                                  owner_predicates=()):
+    """Check original wording and the complete direct Term statement projection.
 
-    This verifies exact authored field and value evidence, not completeness of
-    observation, the Term classifier, or any projected relation target.
+    The separate owner replay proves reviewed concept statements. Here each
+    direct document statement needs at least one stored witness and vice
+    versa. This does not rerun Term's classifier or infer targets from text.
     """
     from rdflib import Literal, RDF, URIRef
     from rdflib.namespace import DCTERMS
@@ -489,6 +494,10 @@ def verify_authored_source_values(dataset, namespace, document_paths, coverage, 
 
     authored = dataset.graph(URIRef(namespace + "graph:authored-assertions"))
     vocabulary = namespace + "glossary-vocabulary:"
+    documents = dataset.graph(URIRef(namespace + "graph:documents"))
+    admitted = Literal("admitted")
+    term_status = URIRef(vocabulary + "termSchemaStatus")
+    direct_terms = set()
     witness_type, key, raw, status, target = (URIRef(vocabulary + name) for name in
         ("AuthoredRelationObservation", "predicateKey", "rawTarget", "projectionStatus", "target"))
     unprojected = Literal("observed-unprojected")
@@ -533,6 +542,24 @@ def verify_authored_source_values(dataset, namespace, document_paths, coverage, 
                    for carrier in carriers
                    for item in (carrier if isinstance(carrier, list) else [carrier])):
             raise ValueError(f"RDF authorship differs from the pinned field value: {path} ({field})")
+        # Term emits direct carrier/literal statements on document subjects.
+        # An admitted carrier pointing to a concept rather than a document
+        # is handled by verify_owner_assertions's independent exact replay.
+        term_target = next(iter(targets), None)
+        if disposition == projected_literal or term_target in document_paths:
+            if set(documents.objects(document, term_status)) != {admitted} or (
+                    term_target is not None and set(documents.objects(term_target, term_status)) != {admitted}):
+                raise ValueError("RDF Term statement requires admitted glossary documents")
+            if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", str(field)):
+                raise ValueError("RDF Term statement requires an exact predicate key")
+            direct_terms.add((document, URIRef(TERM_PREDICATE_NAMESPACE + str(field)),
+                              value if term_target is None else term_target))
+
+    observed_terms = {(s, p, o) for s, p, o in authored
+                      if str(p).startswith(TERM_PREDICATE_NAMESPACE)
+                      and (s in document_paths or p not in owner_predicates)}
+    if direct_terms != observed_terms:
+        raise ValueError("RDF Term document statements differ from their authored witnesses")
     expected = {
         "authoredObservations": len(witnesses),
         "projectedAuthoredObservations": len(witnesses) - unprojected_count,
