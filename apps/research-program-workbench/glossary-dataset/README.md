@@ -119,6 +119,13 @@ with `SnapshotReceiver(...).load_prepared_dataset()` rather than opening
 the prepared path directly. This verifies the bytes and current pinned
 Git inputs; it does not sign the manifest or establish scientific truth.
 
+The Python `authored` stage also independently checks each retained
+`observed-unprojected` value against its exact pinned Markdown file. It
+requires one original plain string from the named top-level or nested
+`relations` field, and checks the retained observation count. This is
+a check of what was written, not a replay of Term admission, a guarantee
+that every authored field was retained, or a claim about its target.
+
 A saved-query reader opens the same verified buffer once and pins the
 receiving Git commit. Use `receiver.open_saved_queries()`, then
 `reader.select("data/schema/queries/reviewed-evidence.rq", bindings=...)`

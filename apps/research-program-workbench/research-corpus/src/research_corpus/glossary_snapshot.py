@@ -286,7 +286,7 @@ class SnapshotReceiver:
         selected = glossary_catalog(content_catalog(self.root, source, profile), profile)
         authored_profile = exact_path(profile["authoredRelations"])
         base = "https://github.com/" + profile["repository"] + "/blob/main/"
-        documents = {URIRef(base + quote(path, safe="/!~*'()")) for path in selected}
+        document_paths = {URIRef(base + quote(path, safe="/!~*'()")): path for path in selected}
         with TemporaryDirectory(prefix="glossary-authored-replay-") as temporary:
             root = Path(temporary)
             # Replicate the producer's data-only input selection, not its parser.
@@ -303,8 +303,11 @@ class SnapshotReceiver:
                 stderr=subprocess.PIPE, timeout=60, cwd=self.root,
             )
             report = json.loads(replay)
-        count = verify_owner_assertions(dataset, namespace, documents, predicates, report)
+            unprojected = verify_unprojected_authorship(dataset, namespace, document_paths,
+                                                        manifest["coverage"], root)
+        count = verify_owner_assertions(dataset, namespace, set(document_paths), predicates, report)
         print(f"Verified {count} reviewed concept assertions and exact authored witnesses from pinned Git.")
+        print(f"Verified original field values for {unprojected} retained unprojected observations.")
 
 
     def verify_navigation(self, replay_entry):
@@ -407,6 +410,60 @@ def compare_navigation(actual, expected, namespace):
     if not matches:
         raise ValueError("RDF navigation differs from the pinned Workbench replay")
     return len(reference)
+
+
+def verify_unprojected_authorship(dataset, namespace, document_paths, coverage, root):
+    """Check that stored unprojected values were written in the pinned carriers.
+
+    This verifies retained lexical evidence, not completeness of observation,
+    the Term classifier, or any proposed relation target.
+    """
+    from rdflib import Literal, RDF, URIRef
+    from rdflib.namespace import DCTERMS
+    from .frontmatter import FrontmatterError, parse_file
+
+    authored = dataset.graph(URIRef(namespace + "graph:authored-assertions"))
+    vocabulary = namespace + "glossary-vocabulary:"
+    witness_type, key, raw, status, target = (URIRef(vocabulary + name) for name in
+        ("AuthoredRelationObservation", "predicateKey", "rawTarget", "projectionStatus", "target"))
+    unprojected = Literal("observed-unprojected")
+    witnesses = set(authored.subjects(status, unprojected))
+    count = coverage.get("unprojectedAuthoredObservations", 0)
+    if type(count) is not int or count != len(witnesses):
+        raise ValueError("RDF unprojected authorship count differs from the projection manifest")
+    frontmatter, seen = {}, set()
+    for witness in witnesses:
+        sources, fields, values = (set(authored.objects(witness, prop))
+                                   for prop in (DCTERMS.source, key, raw))
+        if ((witness, RDF.type, witness_type) not in authored
+                or set(authored.objects(witness, status)) != {unprojected}
+                or (witness, target, None) in authored
+                or any(len(items) != 1 for items in (sources, fields, values))):
+            raise ValueError("RDF unprojected authorship needs one complete targetless witness")
+        document, field, value = (next(iter(items)) for items in (sources, fields, values))
+        path = document_paths.get(document)
+        if (path is None or not isinstance(field, Literal) or field.datatype is not None or field.language
+                or not isinstance(value, Literal) or value.datatype is not None or value.language):
+            raise ValueError("RDF unprojected authorship needs a pinned file and plain field and value")
+        evidence = (path, str(field), str(value))
+        if evidence in seen:
+            raise ValueError("RDF unprojected authorship repeats the same original field value")
+        seen.add(evidence)
+        if path not in frontmatter:
+            try:
+                frontmatter[path], _ = parse_file(root / exact_path(path))
+            except FrontmatterError as error:
+                raise ValueError(f"Cannot independently read unprojected authorship in {path}") from error
+        original = frontmatter[path]
+        nested = original.get("relations")
+        carriers = [original.get(str(field))]
+        if isinstance(nested, dict):
+            carriers.append(nested.get(str(field)))
+        if not any(isinstance(item, str) and item == str(value)
+                   for carrier in carriers
+                   for item in (carrier if isinstance(carrier, list) else [carrier])):
+            raise ValueError(f"RDF unprojected authorship differs from the pinned field value: {path} ({field})")
+    return count
 
 
 def verify_owner_assertions(dataset, namespace, documents, predicates, report):

@@ -435,7 +435,8 @@ class AlternateProfileReceiving(unittest.TestCase):
             output = "cache/dataset.nq"
             paths = ["notebooks/terms/cell.md", "notebooks/terms/tissue.md"]
             put(paths[0], "---\nname: Cell\ndescription: A test entry.\n"
-                          "part-of: tissue\n---\n# Cell\n")
+                          "part-of: tissue\nsee-also: unknown-fiber\n"
+                          "relations:\n  local-field: [another-sense]\n---\n# Cell\n")
             put(paths[1], "---\nname: Tissue\ndescription: Another test entry.\n---\n# Tissue\n")
             put("research.toml", '[corpus]\nlib_dirs=["notebooks/terms"]\n[vocabulary]\n'
                 f'scheme="{prefix}scheme"\nnamespace="{prefix}term:"\n'
@@ -465,6 +466,14 @@ class AlternateProfileReceiving(unittest.TestCase):
                 (v + "predicateKey", '"part-of"'), (v + "rawTarget", '"tissue"'),
                 (v + "projectionStatus", '"admitted-carrier"'), (v + "target", f"<{tissue}>"),
             ))
+            for field, raw_value in (("see-also", "unknown-fiber"), ("local-field", "another-sense")):
+                observation = f"<urn:example:unprojected:{field}>"
+                lines.extend(f"{observation} <{pred}> {value} {graph} ." for pred, value in (
+                    ("http://www.w3.org/1999/02/22-rdf-syntax-ns#type", f"<{v}AuthoredRelationObservation>"),
+                    ("http://purl.org/dc/terms/source", f"<{base}main/{paths[0]}>"),
+                    (v + "predicateKey", json.dumps(field)), (v + "rawTarget", json.dumps(raw_value)),
+                    (v + "projectionStatus", '"observed-unprojected"'),
+                ))
             reviewed = Graph().parse(root / "settings/review.ttl", format="turtle")
             lines.extend(f"{s.n3()} {p.n3()} {o.n3()} <{prefix}graph:reviewed-vocabulary> ."
                          for s, p, o in reviewed)
@@ -485,7 +494,8 @@ class AlternateProfileReceiving(unittest.TestCase):
                 "artifact": {"path": snapshot, "sha256": hashlib.sha256(raw).hexdigest(),
                              "compressedSha256": hashlib.sha256(packed).hexdigest(), "quads": len(lines)},
                 "coverage": {"audience": "authenticated", "trackedGlossaryMarkdown": 2, "projectedDocuments": 2,
-                             "termSchemaAdmitted": 1, "termSchemaNotAdmitted": 1},
+                             "termSchemaAdmitted": 1, "termSchemaNotAdmitted": 1,
+                             "unprojectedAuthoredObservations": 2},
                 "source": {"commit": src, "contentTree": git("rev-parse", src + ":notebooks"),
                            "inputs": {name: git("rev-parse", src + ":" + name)
                                       for name in (profile, authored, config, "research.toml", "settings/review.ttl")}},
@@ -497,6 +507,22 @@ class AlternateProfileReceiving(unittest.TestCase):
             for stage in ("prepare", "evidence", "authored"):
                 result = python("research_corpus.glossary_snapshot", stage, *args)
             self.assertIn("Verified 1 reviewed concept assertions", result)
+            self.assertIn("Verified original field values for 2 retained unprojected observations.", result)
+
+            # Matching receipts and witness counts are not evidence that the
+            # stored spelling occurs under the declared original field.
+            changed = raw.replace(b'"unknown-fiber"', b'"another-fiber"')
+            changed_archive = gzip.compress(changed, mtime=0)
+            record = json.loads((root / manifest).read_text("utf-8"))
+            record["artifact"].update(sha256=hashlib.sha256(changed).hexdigest(),
+                                      compressedSha256=hashlib.sha256(changed_archive).hexdigest())
+            put(output, changed)
+            put(snapshot, changed_archive)
+            put(manifest, json.dumps(record))
+            with self.assertRaises(subprocess.CalledProcessError) as error:
+                python("research_corpus.glossary_snapshot", "authored", *args)
+            self.assertIn("RDF unprojected authorship differs from the pinned field value",
+                          error.exception.stderr)
 
 
 class OwnerAssertionReplay(unittest.TestCase):
