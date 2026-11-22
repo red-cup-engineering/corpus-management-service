@@ -147,6 +147,18 @@ checks out. Selected concept statements instead use the independent owner
 replay. These checks do not prove that every authored field was retained
 or independently re-run Term target admission.
 
+For a saved query without a prepared file, use the installed
+`verify-glossary-snapshot select` operation with the exact `--profile`,
+`--manifest`, `--snapshot`, and `--query` repository paths. It captures Git
+HEAD once, reads its committed manifest and compressed dataset (not edited
+working-tree copies), verifies both digests, and evaluates the committed
+query in memory. It writes SPARQL Results JSON (default) or `--format csv`
+to stdout. Use `--iri name=urn:example:entity` or
+`--literal "name=the literal value"` for up to 32 unique bindings. It refuses
+free-form query text and does not create an N-Quads output. This is not
+publication, claim validation, or a new source of read permissions.
+
+The separately prepared-data API is available for existing proof consumers.
 A saved-query reader opens the same verified buffer once and pins the
 receiving Git commit. Use `receiver.open_saved_queries()`, then
 `reader.select("data/schema/queries/reviewed-evidence.rq", bindings=...)`
