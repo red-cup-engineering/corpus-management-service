@@ -1,0 +1,182 @@
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
+import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
+import unittest
+
+from research_corpus.config import load_config
+from research_corpus.corpus import load
+from research_corpus.vocabulary import main, project_authored_relations, render
+
+
+class AuthoredRelations(unittest.TestCase):
+    def setUp(self):
+        tmp = TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        (self.root / "concepts").mkdir()
+        self.config = self.root / "research.toml"
+        self.config.write_text("""
+[program]
+title = "One vocabulary"
+[corpus]
+lib_dirs = ["concepts"]
+[vocabulary]
+scheme = "urn:test:scheme:vocabulary"
+namespace = "urn:test:concept:"
+document_base_url = "https://example.invalid/blob/main/"
+output = "data/ontology.ttl"
+members = ["concepts/act.md", "concepts/diagram.md"]
+""")
+        self.profile_path = self.root / "policy.json"
+        self.policy = {"formatVersion": 1, "relations": {"codomain-concept": "urn:test:predicate:codomain"}}
+        self.act = self.root / "concepts" / "act.md"
+        self.diagram = self.root / "concepts" / "diagram.md"
+        self.act.write_text("---\nname: Act\ndescription: Describes a witnessed act.\nvisibility: public\n"
+                            "codomain-concept: diagram\n---\n\nSee [Diagram](diagram.md).\n")
+        self.diagram.write_text("---\nname: Diagram\ndescription: Describes the diagram.\n---\n\nNot an act.\n")
+
+    def configure(self):
+        self.profile_path.write_text(json.dumps(self.policy))
+
+    def source_json(self, audience="authenticated"):
+        return project_authored_relations(load(config=load_config(self.root)), profile=self.policy, audience=audience)
+
+    def cli(self, *args):
+        out, err = StringIO(), StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = main(["--root", str(self.root), *args])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_owner_declared_assertion_and_unchanged_reviewed_turtle(self):
+        before = render(load(config=load_config(self.root)))
+        self.configure()
+        self.assertEqual(render(load(config=load_config(self.root))), before)
+        code, output, _ = self.cli("--authored-relations", "policy.json", "--audience", "authenticated")
+        self.assertEqual(code, 0)
+        row, = json.loads(output)["assertions"]
+        self.assertEqual(row, {
+            "subject": "urn:test:concept:act", "predicate": "urn:test:predicate:codomain",
+            "object": "urn:test:concept:diagram", "source": "https://example.invalid/blob/main/concepts/act.md",
+            "targetSource": "https://example.invalid/blob/main/concepts/diagram.md",
+            "field": "codomain-concept", "rawValue": "diagram",
+        })
+        self.assertFalse((self.root / "data").exists())
+
+    def test_markdown_link_without_frontmatter_does_not_assert(self):
+        self.configure()
+        self.act.write_text(self.act.read_text().replace("codomain-concept: diagram\n", ""))
+        self.assertEqual(self.source_json()["assertions"], [])
+        self.assertEqual(self.source_json()["unresolved"], [])
+
+    def test_neither_alias_nor_audience_boundary_is_promoted(self):
+        self.configure()
+        _, _, err = self.cli("--authored-relations", "policy.json")
+        self.assertIn("explicit public or authenticated", err)
+        report = self.source_json(audience="public")
+        self.assertEqual(report["assertions"], [])
+        self.assertEqual(len(report["unresolved"]), 1)
+        self.assertNotIn("diagram", str(report))
+        self.diagram.write_text(self.diagram.read_text().replace("---\n\n", "consent-status: hold\n---\n\n"))
+        self.assertEqual(self.source_json()["assertions"], [])
+        self.act.write_text(self.act.read_text().replace("codomain-concept: diagram", "codomain-concept: The Diagram"))
+        code, output, _ = self.cli("--authored-relations", "policy.json", "--audience", "authenticated")
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(output)["assertions"], [])
+
+    def test_no_projection_without_owner_policy(self):
+        code, output, err = self.cli("--authored-relations", "policy.json", "--audience", "authenticated")
+        self.assertEqual((code, output), (2, ""))
+        self.assertIn("policy.json", err)
+        self.configure()
+        old = self.config.read_bytes()
+        self.profile_path.write_text('{"formatVersion":1,"relations":{"codomain-concept":"urn:test:a","codomain-concept":"urn:test:b"}}')
+        code, output, err = self.cli("--authored-relations", "policy.json", "--audience", "authenticated")
+        self.assertEqual((code, output), (2, ""))
+        self.assertIn("duplicate", err)
+        self.assertEqual(self.config.read_bytes(), old)
+        code, output, err = self.cli("--authored-relations", "../policy.json", "--audience", "authenticated")
+        self.assertEqual((code, output), (2, ""))
+        self.assertIn("root-relative", err)
+
+    def test_structured_sources_project_only_explicit_iris(self):
+        prefix = self.act.read_text()
+        self.act.write_text(prefix.replace("codomain-concept: diagram\n",
+            "codomain-concept: diagram\nsources:\n"
+            "  - https://example.invalid/raw/evidence.md\n"
+            "  - path: https://example.invalid/raw/evidence.md\n"
+            "    date: 2026-03-02\n"
+            "  - path: urn:test:source:retained\n"
+            "  - path: services/science/other-owner/note.md\n"
+            "    session: witness-4\n"))
+        authored = self.act.read_bytes()
+        code, _, err = self.cli()
+        self.assertEqual(code, 0, err)
+        turtle = (self.root / "data" / "ontology.ttl").read_text()
+        self.assertEqual(turtle.count("prov:wasDerivedFrom <https://example.invalid/raw/evidence.md>"), 1)
+        self.assertIn("prov:wasDerivedFrom <urn:test:source:retained>", turtle)
+        self.assertNotIn("other-owner", turtle)
+        self.assertNotIn("witness-4", turtle)
+        self.assertEqual(self.cli("--check")[0], 0)
+        self.assertEqual(self.act.read_bytes(), authored)
+
+    def test_check_binds_exact_output_and_never_writes(self):
+        self.assertEqual(self.cli()[0], 0)
+        output = self.root / "data" / "ontology.ttl"
+        prior = output.read_bytes()
+        copy = output.with_name("another.ttl")
+        copy.write_bytes(prior)
+        self.assertEqual(self.cli("--check", "--expected-output", "data/ontology.ttl")[0], 0)
+        for alias in ("data/another.ttl", "data/./ontology.ttl", "../ontology.ttl"):
+            with self.subTest(alias=alias):
+                code, _, error = self.cli("--check", "--expected-output", alias)
+                self.assertEqual(code, 2, error)
+                self.assertRegex(error, r"vocabulary.output differs|exact root-relative")
+                self.assertEqual(output.read_bytes(), prior)
+                self.assertEqual(copy.read_bytes(), prior)
+        self.act.write_text(self.act.read_text().replace("Describes a witnessed act.", "A corrected definition."))
+        code, _, error = self.cli("--check", "--expected-output", "data/ontology.ttl")
+        self.assertEqual(code, 1, error)
+        self.assertIn("missing or stale output", error)
+        self.assertEqual(output.read_bytes(), prior)
+
+    def test_malformed_structured_source_does_not_replace_reviewed_turtle(self):
+        self.assertEqual(self.cli()[0], 0)
+        output = self.root / "data" / "ontology.ttl"
+        prior = output.read_bytes()
+        original = self.act.read_text()
+        for entry in ('{date: 2026-03-02}', '{path: 43}', '{path: "../escape.md"}',
+                      '{path: "/absolute/path.md"}', '{path: "https:/missing-host"}',
+                      '{path: "file:/tmp/unsupported.md"}'):
+            with self.subTest(entry=entry):
+                self.act.write_text(original.replace("codomain-concept: diagram\n",
+                    f"codomain-concept: diagram\nsources: [{entry}]\n"))
+                code, _, err = self.cli()
+                self.assertEqual(code, 2, err)
+                self.assertIn("sources[0].path", err)
+                self.assertEqual(output.read_bytes(), prior)
+
+    def test_authored_relation_list_is_received_as_one_complete_field(self):
+        extra = self.root / "concepts" / "second-diagram.md"
+        extra.write_text("---\nname: Second diagram\ndescription: Another reviewed result.\n---\n")
+        self.config.write_text(self.config.read_text().replace(
+            '"concepts/diagram.md"]', '"concepts/diagram.md", "concepts/second-diagram.md"]',
+        ))
+        original = self.act.read_text()
+        self.act.write_text(original.replace("codomain-concept: diagram",
+                                            "codomain-concept: [diagram, second-diagram]"))
+        report = self.source_json()
+        self.assertEqual([r["rawValue"] for r in report["assertions"]], ["diagram", "second-diagram"])
+        self.assertEqual(report["unresolved"], [])
+        for values in ('[diagram, absent]', '[diagram, diagram]', '[diagram, 17]', '[]'):
+            with self.subTest(values=values):
+                self.act.write_text(original.replace("codomain-concept: diagram", "codomain-concept: " + values))
+                report = self.source_json()
+                self.assertEqual(report["assertions"], [])
+                self.assertEqual(len(report["unresolved"]), 1)
+                self.assertNotIn("absent", str(report))
+
+
+if __name__ == "__main__":
+    unittest.main()
