@@ -17,9 +17,10 @@
     "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
-    "@red-cup-engineering/markdown-engineering-services-section": "0.7.0-dev.1",
-    "@red-cup-engineering/term-engineering-services-section": "0.3.8",
     "@red-cup-engineering/computer-triplet-serialized-content-engineering-services-section": "0.2.9",
-    "@red-cup-engineering/git-engine": "0.1.11-dev.0"
+    "@red-cup-engineering/git-engine": "0.1.11-dev.0",
+    "@red-cup-engineering/markdown-engineering-services-section": "0.7.0-dev.1",
+    "@red-cup-engineering/semiotic-content-address-system": "0.1.9",
+    "@red-cup-engineering/term-engineering-services-section": "0.3.8"
   }
 }

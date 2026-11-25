@@ -1,11 +1,11 @@
 #!/usr/bin/env node
+import { sha256Digest } from "@red-cup-engineering/semiotic-content-address-system";
 import { argValue } from "@red-cup-engineering/parse-javascript-argv-service";
 // Sweeps a filesystem subtree for candidate prior-art assets matching bounded
 // keywords, packages them as corpus-management-science-services-section knowledge forms, and
 // runs the team's own deterministic analyzeForms pipeline over them. A shared
 // base filename is recorded as unresolved evidence; model output cannot settle
 // identity and no private inference harness is embedded in this settlement.
-import { sha256Digest } from "@red-cup-engineering/cryptographic-computer-data-engineering-services-section/integrity";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve, relative, basename, extname } from "node:path";
 import { fileURLToPath } from "node:url";

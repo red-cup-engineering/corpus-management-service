@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 import { CORPUS_KNOWLEDGE_CONTRACT, PROJECT_CORPUS_SEAM_CONTRACT } from "./law.mjs";
 import { compileJsonSchema } from "@red-cup-engineering/json-schema-engineering-services-section/validation";
 import { createEvidenceJournal } from "@red-cup-engineering/semantic-record-journal-service";
-import { canonical, digest, contentId, analyzeForms } from "./lib/knowledge-forms.mjs";
+import { analyzeForms } from "./lib/knowledge-forms.mjs";
+import { canonicalEqual, exactIdentity } from "@red-cup-engineering/semiotic-content-address-system";
 
 const NODE_ID = "corpus-management-science-services-section";
 const ACTOR = `urn:ame:${NODE_ID}`;
@@ -33,7 +34,7 @@ function store() {
 }
 async function witness(activity, outcome, instant, stageIds = []) {
   const provider = store();
-  const activityDigest = digest(activity);
+  const activityDigest = exactIdentity(activity);
   const notificationData = {
     activityId: typeof activity?.id === "string" ? activity.id : "urn:activity:unidentified",
     activityDigest,
@@ -44,7 +45,7 @@ async function witness(activity, outcome, instant, stageIds = []) {
   };
   const cloudEvent = {
     specversion: "1.0",
-    id: contentId({ source: ACTOR, type: `org.emsenn.${NODE_ID}.${outcome}`, notificationData }),
+    id: exactIdentity({ source: ACTOR, type: `org.emsenn.${NODE_ID}.${outcome}`, notificationData }),
     source: ACTOR,
     type: `org.emsenn.${NODE_ID}.${outcome}`,
     subject: notificationData.activityId,
@@ -68,7 +69,7 @@ async function witness(activity, outcome, instant, stageIds = []) {
 function rejection(activity, reason) {
   return {
     "@context": CONTEXT,
-    id: contentId({ actor: ACTOR, inReplyTo: activity?.id ?? null, reason }),
+    id: exactIdentity({ actor: ACTOR, inReplyTo: activity?.id ?? null, reason }),
     type: "Reject",
     actor: ACTOR,
     target: typeof activity?.actor === "string" ? activity.actor : "urn:actor:unidentified",
@@ -97,7 +98,7 @@ function validateActivity(activity) {
   if (object.contract === BILATERAL_CONTRACT && activity.actor !== "urn:ame:project-management-team") return "the bilateral PMT contract admits Project Management Team as actor";
   if (typeof object.project !== "string" || !object.project) return "Offer requires a project identifier";
   if (!object.corpus || !Array.isArray(object.corpus.forms)) return "corpus.forms must be an array";
-  const actual = digest(object.corpus.forms);
+  const actual = exactIdentity(object.corpus.forms);
   if (object.corpus.digest !== actual) return `corpus digest mismatch: expected ${actual}`;
   return validateCapability(object.capability, object.corpus.digest);
 }
@@ -127,7 +128,7 @@ function validatePricing(pricing) {
 
 function stage(loopId, name, predecessors, knowledgeRefs, evidence) {
   const body = { type: "MAPEStage", loopId, stage: name, predecessors, knowledgeRefs, evidence };
-  return { id: contentId(body), ...body };
+  return { id: exactIdentity(body), ...body };
 }
 
 let activity;
@@ -151,9 +152,9 @@ if (!process.exitCode) {
     const corpus = activity.object.corpus;
     const contract = activity.object.contract;
     const knowledgeRefs = [activity.id, corpus.digest, contract, activity.object.capability.id];
-    const loopId = contentId({ contract, offer: activity.id, corpus: corpus.digest });
+    const loopId = exactIdentity({ contract, offer: activity.id, corpus: corpus.digest });
     const monitor = stage(loopId, "monitor", [], knowledgeRefs, {
-      sourceOfferDigest: digest(activity),
+      sourceOfferDigest: exactIdentity(activity),
       corpusDigest: corpus.digest,
       formCount: corpus.forms.length,
       customerTerritoryMutation: false
@@ -184,10 +185,10 @@ if (!process.exitCode) {
       coordinationRequired: issues,
       loop: { id: loopId, policy: "knowledge-form-mape-v1", stages: { monitor, analyze, plan, execute } }
     };
-    const resultId = contentId(resultBody);
+    const resultId = exactIdentity(resultBody);
     const output = {
       "@context": CONTEXT,
-      id: contentId({ actor: ACTOR, inReplyTo: activity.id, resultId }),
+      id: exactIdentity({ actor: ACTOR, inReplyTo: activity.id, resultId }),
       type: "Accept",
       actor: ACTOR,
       target: activity.actor,

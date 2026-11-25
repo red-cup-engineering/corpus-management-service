@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 import { argValue } from "@red-cup-engineering/parse-javascript-argv-service";
 
-import { makeNiUri } from "@red-cup-engineering/uri-engineering-services-section/ni-uri";
+import { makeNiUri } from "@red-cup-engineering/semiotic-content-address-system";
 import { spawnSync } from "node:child_process";
 import { closeSync, existsSync, openSync, readFileSync, readdirSync, readSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PRIOR_RESEARCH_CONTRACT } from "./law.mjs";
-import { canonical, contentId, digest } from "./lib/knowledge-forms.mjs";
+import { canonicalEqual, exactIdentity } from "@red-cup-engineering/semiotic-content-address-system";
 import { createEvidenceJournal } from "@red-cup-engineering/semantic-record-journal-service";
 
 const CONTEXT = "https://www.w3.org/ns/activitystreams";
@@ -30,7 +30,7 @@ function now() { return argValue("--now") ?? new Date().toISOString(); }
 function input() { return JSON.parse(readFileSync(argValue("--input-file") ?? 0, "utf8")); }
 function attachments(note) { return Array.isArray(note?.attachment) ? note.attachment : note?.attachment === undefined ? [] : [note.attachment]; }
 function response(type, source, object) {
-  return { "@context": CONTEXT, id: contentId({ actor: ACTOR, type, inReplyTo: source?.id ?? null, object }), type, actor: ACTOR, target: source?.actor ?? LMT_ACTOR, inReplyTo: source?.id ?? "urn:activity:unidentified", object };
+  return { "@context": CONTEXT, id: exactIdentity({ actor: ACTOR, type, inReplyTo: source?.id ?? null, object }), type, actor: ACTOR, target: source?.actor ?? LMT_ACTOR, inReplyTo: source?.id ?? "urn:activity:unidentified", object };
 }
 function emit(value, code = 0) {
   const serialized = `${JSON.stringify(value, null, 2)}\n`;
@@ -43,8 +43,8 @@ function dataRoot() { return resolve(process.env.CORPUS_MANAGEMENT_DATA_ROOT ?? 
 function store() { return createEvidenceJournal({ root: NODE_ROOT, objectKind: "corpus-management.record" }); }
 async function append(type, value, instant) { return store().record({ category: `${CONTRACT}.${type}`, recordedAt: instant, record: value, charge: { support: true, refutation: false }, ...(type === "eavt" ? { relation: { subject: value.e, predicate: value.a, object: value.v } } : {}) }); }
 async function witness(activity, outcome, instant, details = {}) {
-  const body = { source: ACTOR, type: `org.emsenn.${NODE_ID}.${outcome}`, subject: activity?.id ?? "urn:activity:unidentified", time: instant, data: { activityDigest: digest(activity ?? null), contract: CONTRACT, ...details } };
-  const event = { specversion: "1.0", id: contentId(body), ...body, datacontenttype: "application/json" };
+  const body = { source: ACTOR, type: `org.emsenn.${NODE_ID}.${outcome}`, subject: activity?.id ?? "urn:activity:unidentified", time: instant, data: { activityDigest: exactIdentity(activity ?? null), contract: CONTRACT, ...details } };
+  const event = { specversion: "1.0", id: exactIdentity(body), ...body, datacontenttype: "application/json" };
   await append("activitystreams", activity ?? {}, instant); await append("events", event, instant); await append("eavt", { e: body.subject, a: "activity/outcome", v: outcome, t: event.id }, instant); return event;
 }
 async function reject(source, reason, instant, details = {}) {
@@ -110,7 +110,7 @@ async function solicit(activity, instant) {
   const object = {
     type: "ExecutableServiceOffer", contract: CONTRACT, sourceActivity: sourceActivity.id,
     intentSignature: "urn:service-intent:recover-digest-bound-prior-research",
-    request, requestDigest: digest(request),
+    request, requestDigest: exactIdentity(request),
     scope: request.kind === "projection"
       ? { sourceResultId: request.sourceResultId, contextualBundleDigest: request.contextualBundleDigest, gapBundleDigest: request.gapBundleDigest, terms: request.terms, maxFiles: request.maxFiles }
       : { roots: request.roots, terms: request.terms, maxFiles: request.maxFiles, maxBytesPerFile: request.maxBytesPerFile, maxMatchesPerFile: request.maxMatchesPerFile },
@@ -127,13 +127,13 @@ function validateInvocation(activity) {
   const offer = contract.offer;
   if (offer?.type !== "Offer" || offer.actor !== ACTOR || offer.object?.type !== "ExecutableServiceOffer") return "ServiceContract must carry this provider's executable Offer";
   const request = offer.object.request;
-  if (offer.object.requestDigest !== digest(request)) return "accepted request does not match the provider offer digest";
+  if (offer.object.requestDigest !== exactIdentity(request)) return "accepted request does not match the provider offer digest";
   const changedTerms = requestProblems(request, request.executionMode === "live");
   if (changedTerms.length) return `accepted request no longer satisfies provider terms: ${changedTerms.join(", ")}`;
   const capability = contract.capability;
   if (capability?.type !== "Capability" || capability.holder !== ACTOR || capability.invocationTarget !== ACTOR) return "accepted contract requires a capability held by this provider";
   if (capability.parentOffer !== offer.id || capability.attenuation?.requestDigest !== offer.object.requestDigest) return "capability is not attenuated to the accepted offer and request";
-  if (canonical(capability.attenuation?.providerScope) !== canonical(offer.object.scope)) return "capability does not preserve the provider-authored recovery scope";
+  if (!canonicalEqual(capability.attenuation?.providerScope, offer.object.scope)) return "capability does not preserve the provider-authored recovery scope";
   if (!Array.isArray(capability.allowedActions) || !capability.allowedActions.includes("invoke-service")) return "capability does not grant invoke-service";
   for (const effect of offer.object.effects ?? []) if (!capability.allowedActions.includes(effect)) return `capability does not grant required effect ${effect}`;
   return null;
@@ -241,8 +241,8 @@ function recover(request, instant) {
   for (const source of sources) if (source.excerptTruncated) gaps.push({ type: "excerpt-truncation", path: source.path, byteSize: source.byteSize, admittedBytes: request.maxBytesPerFile });
   const contextualBundle = { type: "ContextualBundle", roots: request.roots, terms: request.terms, sourceCount: sources.length, sources };
   const gapBundle = { type: "GapBundle", gapCount: gaps.length, gaps };
-  const resultBody = { type: "PriorResearchRecoveryResult", contract: CONTRACT, recoveredAt: instant, requestDigest: digest(request), contextualBundle, contextualBundleDigest: digest(contextualBundle), gapBundle, gapBundleDigest: digest(gapBundle), filesystemReads: sources.length, customerTerritoryMutation: false };
-  return { id: contentId(resultBody), ...resultBody };
+  const resultBody = { type: "PriorResearchRecoveryResult", contract: CONTRACT, recoveredAt: instant, requestDigest: exactIdentity(request), contextualBundle, contextualBundleDigest: exactIdentity(contextualBundle), gapBundle, gapBundleDigest: exactIdentity(gapBundle), filesystemReads: sources.length, customerTerritoryMutation: false };
+  return { id: exactIdentity(resultBody), ...resultBody };
 }
 async function recoveryById(request) {
   for (const { record: candidate } of store().query({ category: `${CONTRACT}.recoveries` })) {
@@ -273,8 +273,8 @@ function projectExistingRecovery(request, instant) {
   if (candidates.length > selected.length) gaps.push({ type: "candidate-truncation", matched: candidates.length, admitted: selected.length, omitted: candidates.length - selected.length });
   const contextualBundle = { type: "ContextualBundle", sourceRecovery: sourceRecovery.id, terms: request.terms, sourceCount: selected.length, sources: selected };
   const gapBundle = { type: "GapBundle", sourceRecoveryGapBundleDigest: sourceRecovery.gapBundleDigest, gapCount: gaps.length, gaps };
-  const resultBody = { type: "PriorResearchProjectionResult", contract: CONTRACT, projectedAt: instant, requestDigest: digest(request), sourceRecovery: sourceRecovery.id, sourceContextualBundleDigest: sourceRecovery.contextualBundleDigest, sourceGapBundleDigest: sourceRecovery.gapBundleDigest, contextualBundle, contextualBundleDigest: digest(contextualBundle), gapBundle, gapBundleDigest: digest(gapBundle), filesystemReads: 0, customerTerritoryMutation: false };
-  return { id: contentId(resultBody), ...resultBody };
+  const resultBody = { type: "PriorResearchProjectionResult", contract: CONTRACT, projectedAt: instant, requestDigest: exactIdentity(request), sourceRecovery: sourceRecovery.id, sourceContextualBundleDigest: sourceRecovery.contextualBundleDigest, sourceGapBundleDigest: sourceRecovery.gapBundleDigest, contextualBundle, contextualBundleDigest: exactIdentity(contextualBundle), gapBundle, gapBundleDigest: exactIdentity(gapBundle), filesystemReads: 0, customerTerritoryMutation: false };
+  return { id: exactIdentity(resultBody), ...resultBody };
 }
 async function invoke(activity, instant) {
   const invalid = validateInvocation(activity);

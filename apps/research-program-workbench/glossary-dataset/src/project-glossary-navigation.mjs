@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { sha256Hex } from "@red-cup-engineering/semiotic-content-address-system";
 import { basename } from "node:path";
 import { gitBlobIdOf } from "@red-cup-engineering/git-engine/git-object-id";
 import { readMarkdownFrontmatter } from "@red-cup-engineering/markdown-engineering-services-section/read-markdown-frontmatter";
@@ -12,7 +12,7 @@ import { iriTerm, literal } from "@red-cup-engineering/computer-triplet-serializ
 import { admitProfile, safePath } from "./git-source.mjs";
 
 const sha1 = /^[a-f0-9]{40}$/u;
-export const hash = (...args) => createHash("sha256").update(JSON.stringify(args)).digest("hex");
+export const hash = (...args) => sha256Hex(JSON.stringify(args));
 export const sourcePredicates = {
   type: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
   source: "http://purl.org/dc/terms/source",

@@ -1,5 +1,5 @@
+import { sha256Hex } from "@red-cup-engineering/semiotic-content-address-system";
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,7 +21,6 @@ const providerExports = {
   tripletSerialization: ["@red-cup-engineering/computer-triplet-serialized-content-engineering-services-section", ["rdf-named-graph", "rdf-terms", "n-quads", "rdf-canonicalization"]],
 };
 
-export const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 function providerRoot(filename, name) {
   for (let dir = dirname(filename); dirname(dir) !== dir; dir = dirname(dir)) {
@@ -29,7 +28,7 @@ function providerRoot(filename, name) {
     if (!existsSync(path)) continue;
     const bytes = readFileSync(path);
     const record = JSON.parse(bytes);
-    if (record.name === name) return { dir, version: record.version, manifestSha256: sha256(bytes) };
+    if (record.name === name) return { dir, version: record.version, manifestSha256: sha256Hex(bytes) };
   }
   throw new Error(`could not observe the package manifest for ${name}`);
 }
@@ -37,8 +36,8 @@ function providerRoot(filename, name) {
 function measureWorkbench(bytes) {
   const { name, version } = JSON.parse(bytes);
   const modules = Object.fromEntries(workbenchModules.map((path) =>
-    ["src/" + path, sha256(readFileSync(new URL(path, import.meta.url)))]));
-  return { name, version, manifestSha256: sha256(bytes), modules };
+    ["src/" + path, sha256Hex(readFileSync(new URL(path, import.meta.url)))]));
+  return { name, version, manifestSha256: sha256Hex(bytes), modules };
 }
 
 /** Measure the owning application, including the Python helper it invokes. */
@@ -59,7 +58,7 @@ export function observeNodeProviders() {
       if (pkg.version !== dependencies[name] || selected && pkg.dir !== selected.dir)
         throw new Error(`loaded provider does not match the declared package: ${name}`);
       selected = pkg;
-      return [subpath, sha256(readFileSync(file))];
+      return [subpath, sha256Hex(readFileSync(file))];
     }));
     return [key, { name, version:selected.version, manifestSha256:selected.manifestSha256, modules }];
   })) };
@@ -79,7 +78,7 @@ function compressSnapshot(raw) {
 
 /** Materialize the tracked artifact pair after independent conformance admitted the raw graph. */
 export function createSnapshotReceipt({ datasetPath, nquads, source, contentTree, coverage, report, providers }) {
-  const raw = Buffer.from(nquads, "utf8"), digest = sha256(raw);
+  const raw = Buffer.from(nquads, "utf8"), digest = sha256Hex(raw);
   if (!nquads.endsWith("\n") || report.ok !== true
       || !report.checks?.some(c=>c.id==="dataset.ask" && c.ok===true)
       || !report.checks?.some(c=>c.id==="dataset.shacl" && c.ok===true)
@@ -93,7 +92,7 @@ export function createSnapshotReceipt({ datasetPath, nquads, source, contentTree
   if (revision !== source.revision || tree !== source.tree) throw new Error("coverage refers to a different source tree");
   const artifact = {
     path:prefix+".nq.gz", mediaType:"application/n-quads", contentEncoding:"gzip",
-    sha256:digest, compressedSha256:sha256(compressed),
+    sha256:digest, compressedSha256:sha256Hex(compressed),
     quads:nquads.split("\n").length-1,
   };
   const manifest = {
