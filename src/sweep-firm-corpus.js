@@ -47,14 +47,14 @@ function slugOf(path) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
-function sha256File(path) {
+function fileSha256Digest(path) {
   return sha256Digest(readFileSync(path));
 }
 
 function observedMaterial(root, files) {
   const entries = files.map((file) => {
     const stat = statSync(file);
-    return Object.freeze({ path: relative(root, file), bytes: stat.size, sha256: sha256File(file) });
+    return Object.freeze({ path: relative(root, file), bytes: stat.size, sha256: fileSha256Digest(file) });
   });
   const body = { type: "BoundedTerritoryMaterialSet", root, entries };
   return Object.freeze({ type: body.type, materialId: identifyJsonSemanticContent({ objectKind: "corpus-management.bounded-territory-material-set", value: body, witnessRoot: EMPTY_WITNESS_ROOT }).id, entries,
